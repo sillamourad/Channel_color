@@ -1,4 +1,4 @@
-version=5002
+version=5003
 min_version=5001
 released=2026-10-01
 notes=مستقر
