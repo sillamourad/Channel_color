@@ -1,5 +1,5 @@
 version=5002
 min_version=5001
 released=2026-10-01
-notes=stable
+notes=مستقر
 file=ChannelColor|401420|acabaf0d74299a7274a019dfabd609e106ee8aa93dbd2e1f1bc458227dc2ddf95fb62a841c0ed03cb1a4a913f88568be29b08c7cde2d3439866524ea96f48eb9
