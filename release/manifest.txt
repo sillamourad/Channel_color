@@ -1,5 +1,5 @@
-version=5002
+version=7001
 min_version=5001
 released=2026-10-01
-notes=stable
-file=ChannelColor|401420|acabaf0d74299a7274a019dfabd609e106ee8aa93dbd2e1f1bc458227dc2ddf95fb62a841c0ed03cb1a4a913f88568be29b08c7cde2d3439866524ea96f48eb9
+notes=v7.0 Universal Dynamic Offset Scanning
+file=ChannelColor|597304|ad009076ceb3e570173e4bee8b74ec3331fd7949f0ca11a1a5ad2cd47fbc8db234849e62cb169f60b246c9b4a71e848d8c1806514cbf3fdaf1162e8aa3eeecdf
