@@ -1,5 +1,5 @@
-version=7001
+version=7002
 min_version=5001
-released=2026-10-01
-notes=v7.0 Universal Dynamic Offset Scanning
-file=ChannelColor|597304|ad009076ceb3e570173e4bee8b74ec3331fd7949f0ca11a1a5ad2cd47fbc8db234849e62cb169f60b246c9b4a71e848d8c1806514cbf3fdaf1162e8aa3eeecdf
+released=2026-10-02
+notes=v7.2: Clean hardware reboot on channel database switch + dynamic offset scanning
+file=ChannelColor|591820|ac2999fa0ca9f7fbe92b8dcdf2983bab4c590b9cd96f3519c5fb15131864357021d475f064075e824051f8a6830184e7a9c5798f2216413f051fa16c46f53495
