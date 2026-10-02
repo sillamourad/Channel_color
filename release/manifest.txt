@@ -1,5 +1,5 @@
-version=7003
+version=10000
 min_version=5001
 released=2026-10-02
-notes=v1.3: User Channel Protection System (/data/.cc_backup) + Clean Arabic UI
-file=ChannelColor|691592|d892d0ee17231e07ebdc31b1410bb967ecde9c824521d82cb63f9a26ab4d9d8e02871818d9b7a4c61bf1ce6df465b61adafc492be62fdfafe9450c5bc27cab1c
+notes=1.0: SemVer versioning (major*10000+minor*100) + human-readable version display (1.0); manifest stays integer
+file=ChannelColor|695568|894f4281fda2abf269107ab233382526939af2e99f1bcb51531b640017437a8feab5380d27e5af5e56efbfe34a002091e8f8c9a37dee0a2d7af89e6556a18eb5
