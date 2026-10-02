@@ -1,5 +1,5 @@
 version=10000
 min_version=5001
 released=2026-10-02
-notes=1.0: SemVer versioning (major*10000+minor*100) + human-readable version display (1.0); manifest stays integer
-file=ChannelColor|695568|894f4281fda2abf269107ab233382526939af2e99f1bcb51531b640017437a8feab5380d27e5af5e56efbfe34a002091e8f8c9a37dee0a2d7af89e6556a18eb5
+notes=1.0: SemVer versioning (major*10000+minor*100) with human-readable display (1.0); fixes updater guard/daemon readiness (readiness fd was closed by fd cleanup)
+file=ChannelColor|696312|c245b7e9303f7c9d326b969b0062283a9cd5cf7e598cf8434942183c90ff65ee43419a5a84eb7acc86f47f0745830f173466ea6944e4827605e199c3af1adff4
