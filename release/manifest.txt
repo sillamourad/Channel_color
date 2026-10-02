@@ -1,5 +1,5 @@
-version=7002
+version=7003
 min_version=5001
 released=2026-10-02
-notes=v7.2: Clean hardware reboot on channel database switch + dynamic offset scanning
-file=ChannelColor|591820|ac2999fa0ca9f7fbe92b8dcdf2983bab4c590b9cd96f3519c5fb15131864357021d475f064075e824051f8a6830184e7a9c5798f2216413f051fa16c46f53495
+notes=v1.3: User Channel Protection System (/data/.cc_backup) + Clean Arabic UI
+file=ChannelColor|691592|d892d0ee17231e07ebdc31b1410bb967ecde9c824521d82cb63f9a26ab4d9d8e02871818d9b7a4c61bf1ce6df465b61adafc492be62fdfafe9450c5bc27cab1c
