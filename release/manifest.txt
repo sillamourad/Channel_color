@@ -1,6 +1,6 @@
 version=10000
 min_version=10000
 released=2026-10-03
-notes=Fix HUD overlay classpath launch on Android 7 (app_process -Djava.class.path)
-file=ChannelColor|436312|c1b8ff793da78dd7d05016ef98234a809492a25c02a40dd490176b7a4eb78221a699fc68dd55ee5050378745f232c61987fbf956f462cf1c56f53a241c5d4a20
+notes=Universal v1.0 - Fixed Dalvik cache target path
+file=ChannelColor|497548|410ea4cef1e65daa2e14126f667a86d1837c529be730f59afef0fb50160e3f9a3fa92806ebcfe076db4af581be421c5443c3eb39e3b14fdd615024c620490467
 file=OverlayHud.jar|11003|6b7ee08642db9c6c97aece13c2c479399e9e39eb81b6c75f11368905a4e920a1b8a1a3e3b489d9436b8f758851de2709d6f51b4e1e74b34f36da1a47baf60cee
