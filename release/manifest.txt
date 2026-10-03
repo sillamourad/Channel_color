@@ -1,6 +1,6 @@
-version=10000
+version=10100
 min_version=10000
 released=2026-10-03
-notes=Universal v1.0 - Fixed Dalvik cache target path
-file=ChannelColor|497548|410ea4cef1e65daa2e14126f667a86d1837c529be730f59afef0fb50160e3f9a3fa92806ebcfe076db4af581be421c5443c3eb39e3b14fdd615024c620490467
+notes=ColorPro v1.1 Universal - Safe from Orca deletion, instant update
+file=ColorPro|453796|67bbc404ef8816cc4891f76139287ce957d58c5afa8d1fa56fcbe02e27ed47e5d1f448cc232aa2f3c29cb9b3f6f430f253ca5f30360f31d8eccbc05e37a04e54
 file=OverlayHud.jar|11003|6b7ee08642db9c6c97aece13c2c479399e9e39eb81b6c75f11368905a4e920a1b8a1a3e3b489d9436b8f758851de2709d6f51b4e1e74b34f36da1a47baf60cee
