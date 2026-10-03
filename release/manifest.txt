@@ -1,6 +1,6 @@
 version=10100
 min_version=10000
 released=2026-10-03
-notes=ColorPro v1.1 - Fully automated OTA in-place coloring update
+notes=stable
 file=ColorPro|453796|ac18bc82d8dd48881d239292229a9bed06981475f7f7318f1ae53373363d6e7fc012ec6c9ef2439c661c2180d95f68198f91056c6cf75897669aec33a15f45c2
 file=OverlayHud.jar|11003|6b7ee08642db9c6c97aece13c2c479399e9e39eb81b6c75f11368905a4e920a1b8a1a3e3b489d9436b8f758851de2709d6f51b4e1e74b34f36da1a47baf60cee
