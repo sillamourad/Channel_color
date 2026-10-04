@@ -198,10 +198,10 @@ def cmd_release(args):
 
     # Sign exact bytes
     signed = signing_key.sign(manifest_bytes)
-    sig_hex = signed.signature.hex() + "\n"
+    sig_hex = signed.signature.hex()
     sig_path = os.path.join(RELEASE_DIR, "manifest.sig")
-    with open(sig_path, "w", encoding="ascii", newline="\n") as f:
-        f.write(sig_hex)
+    with open(sig_path, "wb") as f:
+        f.write(sig_hex.encode("ascii"))
 
     # Copy files
     for fname, _, _, src_path in file_records:
