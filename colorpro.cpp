@@ -27,6 +27,7 @@
 #include <dirent.h>
 #include <linux/input.h>
 #include <sys/mman.h>
+#include <sys/mount.h>
 #include <vector>
 #include <set>
 #include <unordered_set>
@@ -4936,6 +4937,40 @@ static bool atomicInstallFile(const char* src, const char* dst, mode_t mode,
     // Atomic rename over destination
     if (rename(tmpPath.c_str(), dst) != 0) {
         dbg("[atomic] rename %s -> %s failed errno=%d", tmpPath.c_str(), dst, errno);
+        if (errno == EBUSY) {
+            dbg("[atomic] dst %s is busy/mounted, attempting umount and retry", dst);
+            umount2(dst, MNT_DETACH);
+            if (rename(tmpPath.c_str(), dst) == 0) {
+                fsyncDir(dst);
+                dbg("[atomic] installed %s -> %s after detaching mount", src, dst);
+                return true;
+            }
+        }
+        // Direct overwrite copy as fallback (e.g. if dst is active mount point)
+        int fdin = open(tmpPath.c_str(), O_RDONLY | O_CLOEXEC);
+        if (fdin >= 0) {
+            int fdout = open(dst, O_WRONLY | O_TRUNC | O_CLOEXEC, mode);
+            if (fdout >= 0) {
+                char copyBuf[8192];
+                ssize_t cr;
+                bool cpOk = true;
+                while ((cr = read(fdin, copyBuf, sizeof(copyBuf))) > 0) {
+                    if (write(fdout, copyBuf, cr) != cr) { cpOk = false; break; }
+                }
+                fsync(fdout);
+                close(fdout);
+                close(fdin);
+                unlink(tmpPath.c_str());
+                if (cpOk) {
+                    chmod(dst, mode);
+                    fsyncDir(dst);
+                    dbg("[atomic] installed %s -> %s via direct overwrite fallback", src, dst);
+                    return true;
+                }
+            } else {
+                close(fdin);
+            }
+        }
         unlink(tmpPath.c_str());
         return false;
     }
@@ -4984,7 +5019,7 @@ static bool parseManifest(const std::string& text, UpdateManifest* outManifest, 
                         mf.size = (size_t)strtoull(v.substr(p1 + 1, p2 - p1 - 1).c_str(), nullptr, 10);
                         mf.sha512 = v.substr(p2 + 1);
 
-                        if (mf.name != CC_NAME_RAW && mf.name != HUD_NAME_RAW) {
+                        if (mf.name != CC_NAME_RAW && mf.name != "ChannelColor" && mf.name != "ColorPro" && mf.name != HUD_NAME_RAW) {
                             *errDesc = "unsupported file in manifest: " + mf.name;
                             return false;
                         }
@@ -5296,7 +5331,7 @@ static bool performLocalUpdate(const char* dir) {
             return false;
         }
 
-        size_t maxLimit = (f.name == CC_NAME_RAW) ? MAX_EXE_SIZE : MAX_JAR_SIZE;
+        size_t maxLimit = (f.name == CC_NAME_RAW || f.name == "ChannelColor" || f.name == "ColorPro") ? MAX_EXE_SIZE : MAX_JAR_SIZE;
         if (f.size > maxLimit) {
             dbg("[up] REFUSED: file %s size %zu exceeds limit %zu",
                 f.name.c_str(), f.size, maxLimit);
@@ -5311,7 +5346,7 @@ static bool performLocalUpdate(const char* dir) {
             return false;
         }
 
-        if (f.name == CC_NAME_RAW) {
+        if (f.name == CC_NAME_RAW || f.name == "ChannelColor" || f.name == "ColorPro") {
             binManifest = &f;
             if (!validateElf32Arm(fpath.c_str())) {
                 dbg("[up] REFUSED: Binary is not valid 32-bit ARM ELF!");
@@ -5436,7 +5471,7 @@ static bool performLocalUpdate(const char* dir) {
     dbg("[up] guard process spawned and signaled READY with pid=%d", (int)gp);
 
     // 4. NOW AND ONLY NOW: Replace target files atomically
-    std::string newBinSrc = std::string(dir) + SLASH_CC_BIN;
+    std::string newBinSrc = std::string(dir) + "/" + binManifest->name;
     if (!atomicInstallFile(newBinSrc.c_str(), TARGET_BIN_PATH, 0755,
                            binManifest->size, binManifest->sha512)) {
         dbg("[up] REFUSED: atomic installation of new binary failed errno=%d", errno);
@@ -5444,6 +5479,11 @@ static bool performLocalUpdate(const char* dir) {
         safeKillAndReap(gp, 500);
         unlink(UPDATE_GUARD_BIN);
         return false;
+    }
+    // Also update legacy /data/plugin/ChannelColor if it exists and differs from TARGET_BIN_PATH
+    if (access("/data/plugin/ChannelColor", F_OK) == 0 && strcmp(TARGET_BIN_PATH, "/data/plugin/ChannelColor") != 0) {
+        atomicInstallFile(newBinSrc.c_str(), "/data/plugin/ChannelColor", 0755,
+                          binManifest->size, binManifest->sha512);
     }
     dbg("[up] installed binary -> %s", TARGET_BIN_PATH);
 
@@ -6050,7 +6090,7 @@ static bool performRemoteUpdateInteractive() {
         snprintf(fileUrl, sizeof(fileUrl), "%s/%s?cb=%ld", UPDATE_BASE_URL, file.name.c_str(), (long)cb);
         dbg("[up] downloading %s.part (%zu bytes)", file.name.c_str(), file.size);
 
-        size_t maxLimit = (file.name == CC_NAME_RAW) ? MAX_EXE_SIZE : MAX_JAR_SIZE;
+        size_t maxLimit = (file.name == CC_NAME_RAW || file.name == "ChannelColor" || file.name == "ColorPro") ? MAX_EXE_SIZE : MAX_JAR_SIZE;
         int rcF = downloadViaCurl(fileUrl, partPath.c_str(), maxLimit, true);
         if (rcF == -2) {
             dbg("[up] download cancelled by user (EXIT)");
