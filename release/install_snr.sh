@@ -2,7 +2,7 @@
 # Installer for Live Hardware SNR & Signal Monitor Hook (Availink AVL6211/6261)
 # Compatible with Icone Iron, Iron Pro, Iron Plus, and Wegoo
 
-mount -o remount,rw /system 2>/dev/null
+mount -o rw,remount /system 2>/dev/null || mount -o remount,rw /system 2>/dev/null || mount -o remount,rw /dev/block/mmcblk0p12 /system 2>/dev/null
 
 echo "[+] Installing libsnr_hook.so..."
 curl -k -s -L -o /system/lib/libsnr_hook.so https://raw.githubusercontent.com/sillamourad/Channel_color/main/release/libsnr_hook.so
@@ -24,7 +24,7 @@ EOF
 fi
 
 sync
-mount -o remount,ro /system 2>/dev/null
+mount -o ro,remount /system 2>/dev/null || mount -o remount,ro /system 2>/dev/null
 
 echo "[+] Restarting f_server..."
 killall -9 f_server 2>/dev/null || pkill -9 -f f_server 2>/dev/null
@@ -34,5 +34,5 @@ if [ -f "/data/.snr_value.txt" ]; then
     echo "[OK] Live Hardware SNR & Signal Active!"
     cat /data/.snr_value.txt
 else
-    echo "[!] f_server restarted, please tune to any satellite channel."
+    echo "[!] f_server restarted. If signal does not appear immediately, tune to any satellite channel."
 fi
