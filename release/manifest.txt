@@ -1,5 +1,5 @@
 version=10400
 min_version=5001
 released=2026-10-04
-notes=Smart Beeper: audio alerts based on Quality level. Toggle mute with [0] key. Solid progress bars.
-file=ColorPro|460660|634d50ddbf541e05c8be1882b7e1ce9b949a9bfce30e8966c4a395e9d97c1b179ffa1153cb3f1dc1d34790c4d2d316048ab6721d4c7efc250306b2a29067dadc
+notes=Auto-Hardware SNR & Signal Hook. Smart Beeper: audio alerts based on Quality. Toggle mute with [0] key. Solid progress bars.
+file=ColorPro|454828|110696687eca81531ff5cf19f1a2e277caf740c7d9ab6561594e2c8fcb8ee7436e22f8e93294e3b5015cc1f2bfb979f9d4db229e3174c0b1010ede949cb05aaa
