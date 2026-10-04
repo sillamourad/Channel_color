@@ -6588,7 +6588,8 @@ int main(int argc, char* argv[]) {
         }
 
         int timeoutSec = MENU_TIMEOUT_SEC;
-        if (menuState == 2) timeoutSec = CHANNELS_TIMEOUT_SEC;
+        if (menuState == 8) timeoutSec = 300; // 5 minutes for dish alignment
+        else if (menuState == 2) timeoutSec = CHANNELS_TIMEOUT_SEC;
         else if (menuState == 3 || menuState == 4 || menuState == 5) timeoutSec = 30; // 30s timeout for sub-screens
 
         if (r == 0) {
@@ -6607,7 +6608,7 @@ int main(int argc, char* argv[]) {
                         g_beepLastMs = nowBp;
                     }
                 }
-                if (time(nullptr) - openTime > 180) {
+                if (time(nullptr) - openTime > 300) {
                     dbg("[ac] SNR monitor timeout -> hide");
                     hideMenu();
                     menuState = 0;
@@ -6682,6 +6683,7 @@ int main(int argc, char* argv[]) {
             } else if (code == 11 /* KEY_0 */ || code == 113 /* KEY_MUTE */) {
                 g_beepMute = !g_beepMute;
                 g_beepLastMs = 0; /* fire beep immediately on unmute */
+                openTime = time(nullptr); /* keep SNR monitor alive */
                 dbg("[ac] beep mute=%d", (int)g_beepMute);
                 showSnrMonitor(); /* refresh HUD immediately */
             }
