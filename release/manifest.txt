@@ -2,4 +2,4 @@ version=10400
 min_version=10000
 released=2026-10-04
 notes=Smart Beeper: audio alerts based on Quality level. Toggle mute with [0] key. Solid progress bars.
-file=ColorPro|459444|a70d16a1109d362d8a44223228ef57f0ec6962680cf2f97d5509c71196d9bcac69bdb4a68076b96604b2b3df0e4df09eaa5031c697a6955437b0d375d19ed0a8
+file=ColorPro|459476|19cb1654face1033afbb54e87bf082bfce1583fe052f1d21e7eff6895c2ce017a52dab7a3620b8fea64ace7c8782ca5707a254e8686382a66c8d76942befc447
