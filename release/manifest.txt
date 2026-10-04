@@ -1,6 +1,5 @@
-version=10300
+version=10400
 min_version=10000
 released=2026-10-04
-notes=stable
-file=ColorPro|451668|68d9bfe32dfa99484b178c664206af4e1b88c2c3a609463e03314f081ad378b908470f4a30d0f9261dfaff53893705a61fdcd236709f55f562ee34ec41752503
-file=OverlayHud.jar|11003|6b7ee08642db9c6c97aece13c2c479399e9e39eb81b6c75f11368905a4e920a1b8a1a3e3b489d9436b8f758851de2709d6f51b4e1e74b34f36da1a47baf60cee
+notes=Smart Beeper: audio alerts based on Quality level. Toggle mute with [0] key. Solid progress bars.
+file=ColorPro|459412|a7dbe4551fff934cbcad8ea87ae4e26a2410cfb642e061dcbf8b0935c528ea9d34700625ce8f46a9d9b9731b231371ca86ed61c9419f0489c04644f1d987fa49
