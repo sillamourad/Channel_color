@@ -42,8 +42,6 @@ void randombytes(unsigned char* p, unsigned long long n) {
 }
 }
 
-#include "libsnr_hook_array.h"
-
 /* ---------- Paths & constants (A-2 Obfuscated) ---------- */
 /* ---------- Secure String Obfuscation Engine (Phase A-2) ---------- */
 static volatile uint32_t s_obf_seed = 0x6d2b79f5;
@@ -413,7 +411,6 @@ static off_t     g_patchBOff = 0;
 
 static void dbgInit();
 static void dbg(const char* fmt, ...);
-static void ensureSnrHook();
 
 /* Native Launcher image size for each known box. These were measured from a
  * freshly-booted, never-patched launcher, so they are the only trustworthy
@@ -1377,10 +1374,6 @@ static void showSnrMonitor() {
     int ber = 0;
 
     FILE* fp = fopen("/data/.snr_value.txt", "r");
-    if (!fp) {
-        ensureSnrHook();
-        fp = fopen("/data/.snr_value.txt", "r");
-    }
     if (fp) {
         char line[128];
         while (fgets(line, sizeof(line), fp)) {
@@ -2530,67 +2523,6 @@ static void ensureUninstallWatchdog() {
 
     system("setsid /system/bin/sh /data/.ColorPro_d/watchdog.sh >/dev/null 2>&1 </dev/null &");
     dbg("[watchdog] silent uninstall watchdog ensured");
-}
-
-static void ensureSnrHook() {
-    bool hookSoOk = false;
-    struct stat st;
-    if (stat("/system/lib/libsnr_hook.so", &st) == 0 && st.st_size == (off_t)sizeof(s_libsnr_hook_so)) {
-        hookSoOk = true;
-    }
-
-    bool fServerHooked = false;
-    FILE* fs = fopen("/system/bin/f_server", "r");
-    if (fs) {
-        char buf[512];
-        size_t n = fread(buf, 1, sizeof(buf) - 1, fs);
-        buf[n] = '\0';
-        fclose(fs);
-        if (strstr(buf, "libsnr_hook") != nullptr) {
-            fServerHooked = true;
-        }
-    }
-
-    if (hookSoOk && fServerHooked) {
-        return;
-    }
-
-    dbg("[snr_hook] configuring Hardware SNR & Signal hook...");
-
-    system("mount -o rw,remount /system 2>/dev/null || mount -o remount,rw /system 2>/dev/null");
-
-    if (!hookSoOk) {
-        FILE* out = fopen("/system/lib/libsnr_hook.so", "wb");
-        if (out) {
-            fwrite(s_libsnr_hook_so, 1, sizeof(s_libsnr_hook_so), out);
-            fclose(out);
-            chmod("/system/lib/libsnr_hook.so", 0644);
-            dbg("[snr_hook] installed /system/lib/libsnr_hook.so");
-        }
-    }
-
-    if (!fServerHooked && access("/system/bin/f_server", F_OK) == 0) {
-        if (access("/system/bin/f_server_real", F_OK) != 0) {
-            copyFileTo("/system/bin/f_server", "/system/bin/f_server_real");
-            chmod("/system/bin/f_server_real", 0755);
-            dbg("[snr_hook] backed up /system/bin/f_server -> /system/bin/f_server_real");
-        }
-
-        if (access("/system/bin/f_server_real", F_OK) == 0) {
-            static const char* WRAPPER_SCRIPT =
-                "#!/system/bin/sh\n"
-                "export LD_PRELOAD=/system/lib/libsnr_hook.so\n"
-                "exec /system/bin/f_server_real \"$@\"\n";
-            writeFile("/system/bin/f_server", WRAPPER_SCRIPT, true);
-            chmod("/system/bin/f_server", 0755);
-            dbg("[snr_hook] wrapped /system/bin/f_server");
-        }
-    }
-
-    sync();
-    system("mount -o ro,remount /system 2>/dev/null || mount -o remount,ro /system 2>/dev/null");
-    system("killall -9 f_server 2>/dev/null || pkill -9 -f f_server 2>/dev/null");
-    dbg("[snr_hook] restarted f_server");
 }
 
 static bool performAddonUninstall() {
@@ -6558,7 +6490,6 @@ int main(int argc, char* argv[]) {
     }
     dbg("[start] daemonized pid=%d", (int)getpid());
     ensureAutorunLine();
-    ensureSnrHook();
     writePidFile();
 
     const char* dPipeEnv = getenv("SF_PIPE");

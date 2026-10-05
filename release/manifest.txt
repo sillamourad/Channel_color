@@ -1,5 +1,5 @@
 version=10400
 min_version=5001
-released=2026-10-04
-notes=Auto-Hardware SNR & Signal Hook. Smart Beeper: audio alerts based on Quality. Toggle mute with [0] key. Solid progress bars.
-file=ColorPro|454828|110696687eca81531ff5cf19f1a2e277caf740c7d9ab6561594e2c8fcb8ee7436e22f8e93294e3b5015cc1f2bfb979f9d4db229e3174c0b1010ede949cb05aaa
+released=2026-10-05
+notes=Clean Release v1.4. Passive Hardware SNR & Signal Monitor. Smart Beeper: audio alerts based on Quality. Solid progress bars.
+file=ColorPro|447436|08cd240e1d21c039987867d46e7184a18bf6ae419122bf17442420db1228c78bb24c299d722643ca62dc512c4706f6887d31de99f4d194ec7eb61a4c83eff83d
