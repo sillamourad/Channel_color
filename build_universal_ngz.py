@@ -65,6 +65,8 @@ def main():
         keys_data = f.read()
     with open(os.path.join(ROOT, "libsnr_hook.so"), "rb") as f:
         hook_data = f.read()
+    with open(os.path.join(ROOT, "release", "snr_inject"), "rb") as f:
+        inject_data = f.read()
     with open(os.path.join(ROOT, "ColorPro.png"), "rb") as f:
         png_data = f.read()
         
@@ -84,6 +86,7 @@ def main():
         # Data directory files
         add_entry(tar, "data/plugin/ColorPro_data/OverlayHud.jar", hud_data, 0o644)
         add_entry(tar, "data/plugin/ColorPro_data/sqlite3", sql_data, 0o755)
+        add_entry(tar, "data/plugin/ColorPro_data/snr_inject", inject_data, 0o755)
         add_entry(tar, "data/plugin/ColorPro_data/orca_open_keys.bin", keys_data, 0o644)
         add_entry(tar, "data/plugin/ColorPro_data/libsnr_hook.so", hook_data, 0o644)
         add_entry(tar, "data/plugin/ColorPro_data/variant_counts.txt", b"gold=0\ngreen=0\nred=0\ncyan=0\n", 0o644)
@@ -95,6 +98,7 @@ def main():
         add_entry(tar, "data/plugin/ChannelColor.version", VERSION.encode("utf-8"), 0o644)
         add_entry(tar, "data/plugin/ChannelColor_data/OverlayHud.jar", hud_data, 0o644)
         add_entry(tar, "data/plugin/ChannelColor_data/sqlite3", sql_data, 0o755)
+        add_entry(tar, "data/plugin/ChannelColor_data/snr_inject", inject_data, 0o755)
         add_entry(tar, "data/plugin/ChannelColor_data/orca_open_keys.bin", keys_data, 0o644)
         add_entry(tar, "data/plugin/ChannelColor_data/libsnr_hook.so", hook_data, 0o644)
         add_entry(tar, "data/plugin/ChannelColor_data/variant_counts.txt", b"gold=0\ngreen=0\nred=0\ncyan=0\n", 0o644)

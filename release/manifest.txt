@@ -1,5 +1,6 @@
 version=10400
-min_version=5001
+min_version=10000
 released=2026-10-05
-notes=Clean Release v1.4. Passive Hardware SNR & Signal Monitor. Smart Beeper: audio alerts based on Quality. Solid progress bars.
-file=ColorPro|447436|08cd240e1d21c039987867d46e7184a18bf6ae419122bf17442420db1228c78bb24c299d722643ca62dc512c4706f6887d31de99f4d194ec7eb61a4c83eff83d
+notes=ColorPro v1.4 - Dynamic Safe SNR Runtime Injector & All Fixes
+file=ColorPro|448020|449ea34c9c877391561c7509789a14afd0b63b4b7b7cba932579eea3feeb8f8fe45f356a3674a429a2ad930b9c41feea9c34805083b93ddebdadb0af4a7151fc
+file=OverlayHud.jar|11003|6b7ee08642db9c6c97aece13c2c479399e9e39eb81b6c75f11368905a4e920a1b8a1a3e3b489d9436b8f758851de2709d6f51b4e1e74b34f36da1a47baf60cee

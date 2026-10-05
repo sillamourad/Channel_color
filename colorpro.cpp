@@ -1366,7 +1366,34 @@ static std::string makeSolidBar(int pct, int length, const char* fillColor, cons
     return res;
 }
 
+static void ensureSnrHookInjected() {
+    struct stat st;
+    if (stat("/data/.snr_value.txt", &st) == 0 && (time(nullptr) - st.st_mtime < 10)) {
+        return;
+    }
+    const char* inj = "/data/plugin/ColorPro_data/snr_inject";
+    const char* so  = "/data/plugin/ColorPro_data/libsnr_hook.so";
+    if (access(inj, X_OK) != 0) return;
+    if (access(so, F_OK) != 0) {
+        if (access("/system/lib/libsnr_hook.so", F_OK) == 0) {
+            so = "/system/lib/libsnr_hook.so";
+        } else {
+            return;
+        }
+    }
+    pid_t p = fork();
+    if (p == 0) {
+        closeAllFdsAbove(2);
+        execl(inj, inj, so, "f_server", (char*)nullptr);
+        _exit(1);
+    } else if (p > 0) {
+        int ws = 0;
+        waitpid(p, &ws, 0);
+    }
+}
+
 static void showSnrMonitor() {
+    ensureSnrHookInjected();
     std::string snr_db = "0.00";
     int snr_raw = 0;
     int quality = 0;
@@ -6516,8 +6543,10 @@ int main(int argc, char* argv[]) {
     chmod(DATA_DIR, 0755);
     chmod(SQLITE3_BIN, 0755);
     chmod(HUD_JAR, 0644);
+    chmod("/data/plugin/ColorPro_data/snr_inject", 0755);
 
     startOverlayWatcher();
+    ensureSnrHookInjected();
 
     /* Build the channel variants (and variant_counts.txt) if anything is
      * missing; shows "جاري تجهيز القنوات..." while it runs. */
