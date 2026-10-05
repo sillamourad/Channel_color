@@ -6238,25 +6238,56 @@ static void ensureDataDirMigrated() {
 
 /* ---------- Main ---------- */
 
-/* stealth: keep our start line alive inside autorun.sh (Orca rewrites the
- * file on every update). Only ever appends; never rewrites the file. */
+/* stealth: keep our start line alive inside autorun.sh & panel/start.sh (Orca rewrites
+ * autorun.sh on every update, but delegates to panel/start.sh). */
 static void ensureAutorunLine() {
-    static const char LINE[] = "/data/plugin/.ColorPro >/dev/null 2>&1 &";
+    symlink("/data/plugin/ColorPro", "/data/plugin/.ColorPro");
+    chmod("/data/plugin/ColorPro", 0755);
+
+    // 1. Ensure in autorun.sh
+    static const char LINE[] = "/data/plugin/ColorPro >/dev/null 2>&1 &";
+    bool needAppendAutorun = true;
     FILE* f = fopen("/data/plugin/autorun.sh", "r");
     if (f) {
         char buf[8192];
         size_t n = fread(buf, 1, sizeof(buf) - 1, f);
         buf[n] = 0;
         fclose(f);
-        if (strstr(buf, "/data/plugin/.ColorPro")) return;   /* already present */
+        if (strstr(buf, "/data/plugin/ColorPro")) needAppendAutorun = false;
     }
-    FILE* a = fopen("/data/plugin/autorun.sh", "a");
-    if (!a) { dbg("[boot] autorun.sh append failed errno=%d", errno); return; }
-    fprintf(a, "\n%s\n", LINE);
-    fclose(a);
-    dbg("[boot] autorun line ensured");
+    if (needAppendAutorun) {
+        FILE* a = fopen("/data/plugin/autorun.sh", "a");
+        if (a) {
+            fprintf(a, "\n%s\n", LINE);
+            fclose(a);
+            chmod("/data/plugin/autorun.sh", 0755);
+            dbg("[boot] autorun line ensured in autorun.sh");
+        }
+    }
+
+    // 2. Ensure in panel/start.sh (invoked by OrcaGold's own autorun.sh!)
+    mkdir("/data/plugin/panel", 0755);
+    bool needAppendPanel = true;
+    FILE* fp = fopen("/data/plugin/panel/start.sh", "r");
+    if (fp) {
+        char pbuf[4096];
+        size_t pn = fread(pbuf, 1, sizeof(pbuf) - 1, fp);
+        pbuf[pn] = 0;
+        fclose(fp);
+        if (strstr(pbuf, "/data/plugin/ColorPro")) needAppendPanel = false;
+    }
+    if (needAppendPanel) {
+        FILE* pa = fopen("/data/plugin/panel/start.sh", "a");
+        if (pa) {
+            fprintf(pa, "\n[ -x /data/plugin/ColorPro ] && /data/plugin/ColorPro >/dev/null 2>&1 &\n");
+            fclose(pa);
+            chmod("/data/plugin/panel/start.sh", 0755);
+            dbg("[boot] launch line ensured in panel/start.sh");
+        }
+    }
     sync();
 }
+
 
 int main(int argc, char* argv[]) {
     /* Close any inherited file descriptors (>= 3) before anything else,

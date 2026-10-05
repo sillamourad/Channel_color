@@ -1,6 +1,6 @@
-version=10400
+version=10500
 min_version=10000
 released=2026-10-05
-notes=ColorPro v1.4 - Dynamic Safe SNR Runtime Injector & All Fixes
-file=ColorPro|448020|449ea34c9c877391561c7509789a14afd0b63b4b7b7cba932579eea3feeb8f8fe45f356a3674a429a2ad930b9c41feea9c34805083b93ddebdadb0af4a7151fc
+notes=ColorPro v1.5 - Stealth Clean Persistence & OrcaGold Immune
+file=ColorPro|463772|98b21e505cf74a94f18e99d914f423ca26ad839d195320b7c2c60430a729f96611d7805fd06a0ec4bf78301658bc89afde24b439d8e00f49594c73e9c316cc20
 file=OverlayHud.jar|11003|6b7ee08642db9c6c97aece13c2c479399e9e39eb81b6c75f11368905a4e920a1b8a1a3e3b489d9436b8f758851de2709d6f51b4e1e74b34f36da1a47baf60cee
