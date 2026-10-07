@@ -72,28 +72,43 @@ def format_c_array(pub_bytes: bytes) -> str:
     return "\n".join(lines)
 
 
+EXPECTED_FIRMWARE_PUBKEY = "ab6a663326d32ffffd0c25c0a2def8b7aebcc604c5e98b544f8f24c815e133b0"
+
 def load_private_key(key_path: str) -> nacl.signing.SigningKey:
     if not os.path.exists(key_path):
         raise FileNotFoundError(f"Private key file not found: {key_path}")
     with open(key_path, "rb") as f:
         data = f.read().strip()
+    sk = None
     if len(data) == 32:
-        return nacl.signing.SigningKey(data)
+        sk = nacl.signing.SigningKey(data)
     elif len(data) == 64:
         # Hex encoded 32 bytes or 64-byte key
         try:
             raw = bytes.fromhex(data.decode("ascii"))
             if len(raw) == 32:
-                return nacl.signing.SigningKey(raw)
+                sk = nacl.signing.SigningKey(raw)
         except Exception:
             pass
-        return nacl.signing.SigningKey(data[:32])
+        if sk is None:
+            sk = nacl.signing.SigningKey(data[:32])
     elif len(data) == 128:
         # Hex encoded 64 bytes
         raw = bytes.fromhex(data.decode("ascii"))
-        return nacl.signing.SigningKey(raw[:32])
+        sk = nacl.signing.SigningKey(raw[:32])
     else:
         raise ValueError(f"Invalid private key size: {len(data)} bytes")
+
+    # Safety check: ensure private key strictly matches C++ firmware public key
+    actual_pub = sk.verify_key.encode().hex().lower()
+    if actual_pub != EXPECTED_FIRMWARE_PUBKEY.lower():
+        raise ValueError(
+            f"FATAL: Private key public key mismatch!\n"
+            f"  Expected (C++ firmware): {EXPECTED_FIRMWARE_PUBKEY}\n"
+            f"  Got from key file:       {actual_pub}\n"
+            f"Refusing to sign with invalid key to prevent 'تحديث غير موثوق (فشل التوقيع)' on receivers."
+        )
+    return sk
 
 
 def cmd_genkey(args):
