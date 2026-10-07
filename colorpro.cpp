@@ -33,6 +33,9 @@
 #include <unordered_set>
 #include <utility>
 #include <sys/system_properties.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 extern "C" {
 #include "tweetnacl.h"
@@ -1050,6 +1053,8 @@ static const char* SW_DOT      = "\xE2\x97\x8F";   /* U+25CF black circle */
 
 /* Update screen strings */
 static const char* M_SNR_ENTRY   = "[8] \xD9\x85\xD8\xA4\xD8\xB4\xD8\xB1\x20\xD8\xA7\xD9\x84\xD8\xA5\xD8\xB4\xD8\xA7\xD8\xB1\xD8\xA9\x20\xD9\x88\x20\x53\x4E\x52\x20\x64\x42";
+static const char* M_BISS_ENTRY  = "[9] \xD8\xA5\xD8\xAF\xD8\xAE\xD8\xA7\xD9\x84\x20\xD8\xB4\xD9\x81\xD8\xB1\xD8\xA9\x20\x42\x49\x53\x53"; /* [9] إدخال شفرة BISS */
+static const char* M_SCORE_ENTRY = "[0] \xD8\xB4\xD8\xB1\xD9\x8A\xD8\xB7\x20\xD9\x88\xD8\xA5\xD8\xB9\xD8\xAF\xD8\xA7\xD8\xAF\xD8\xA7\xD8\xAA\x20\xD8\xA7\xD9\x84\xD9\x85\xD8\xA8\xD8\xA7\xD8\xB1\xD9\x8A\xD8\xA7\xD8\xAA"; /* [0] شريط وإعدادات المباريات */
 static const char* M_UPDATE_ENTRY       = "\x5B\x37\x5D\x20\xD8\xA7\xD9\x84\xD8\xAA\xD8\xAD\xD9\x82\xD9\x82\x20\xD9\x85\xD9\x86\x20\xD8\xA7\xD9\x84\xD8\xAA\xD8\xAD\xD8\xAF\xD9\x8A\xD8\xAB"; /* [7] التحقق من التحديث */
 static const char* M_UPDATE_TITLE       = "\xD8\xA7\xD9\x84\xD8\xAA\xD8\xAD\xD9\x82\xD9\x82\x20\xD9\x85\xD9\x86\x20\xD8\xA7\xD9\x84\xD8\xAA\xD8\xAD\xD8\xAF\xD9\x8A\xD8\xAB"; /* التحقق من التحديث */
 static const char* M_UPDATE_AVAIL       = "\xD9\x8A\xD8\xAA\xD9\x88\xD9\x81\xD8\xB1\x20\xD8\xAA\xD8\xAD\xD8\xAF\xD9\x8A\xD8\xAB\x20"; /* يتوفر تحديث  */
@@ -1125,6 +1130,10 @@ static std::string htmlItem(const char* line, const char* sw) {
         rest.resize(p);
     }
     return hcol(H_ITEM, head) + " " + hcol(sw, std::string("<big>") + SW_DOT + "</big>") + " " + hcol(H_ITEM, rest) + hcol(H_HINT, hint);
+}
+
+static inline std::string htmlItem(const std::string& line, const char* sw) {
+    return htmlItem(line.c_str(), sw);
 }
 
 static const char* swatchOf(const std::string& cur) {
@@ -1459,6 +1468,441 @@ static void showSnrMonitor() {
     writeFile(HUD_TXT, body, true);
 }
 
+
+/* ==================== BISS Key Manager ==================== */
+struct BissChannelInfo {
+    std::string name = "Current Channel";
+    uint32_t sid = 1;
+    uint32_t vpid = 0x1FFF;
+    uint32_t pmt = 0;
+    int freq = 0;
+    int polar = 1; // 1=H, 0=V
+    int sr = 0;
+    std::string sat;
+};
+
+struct BissState {
+    int cursor = 0;
+    char key[17] = "1100000000000000";
+    BissChannelInfo ch;
+    std::string statusMsg;
+};
+
+static BissState g_biss;
+
+static int runSqliteSql(const char* dbPath, const std::string& sql, std::string* out);
+
+static bool getCurrentChannelInfo(BissChannelInfo* out) {
+    if (!out) return false;
+    out->name = "Current Channel";
+    out->sid = 1;
+    out->vpid = 0x1FFF;
+    out->freq = 0;
+    out->polar = 1;
+    out->sr = 0;
+    out->sat.clear();
+    
+    if (access(SQLITE3_BIN, X_OK) != 0) return false;
+    
+    std::string q = "ATTACH \"/data/db/config.db\" AS cfg; "
+                    "SELECT s.svc_id, s.svc_name, s.svc_video_pid, s.svc_pmt_pid, "
+                    "t.tp_frequency, t.tp_polar_qam, t.tp_symbol_rate, sat.sat_name "
+                    "FROM _svcInfo s "
+                    "LEFT JOIN _tpInfo t ON s.svc_tp_index = t.id "
+                    "LEFT JOIN _satInfo sat ON t.tp_sat_index = sat.id "
+                    "WHERE s.id = (SELECT config_value FROM cfg._config WHERE config_name='CFG_LastSvc_Tv');";
+    std::string res;
+    if (runSqliteSql(SERVICE_DB, q, &res) == 0 && !res.empty()) {
+        std::vector<std::string> parts;
+        size_t start = 0;
+        while (start < res.size()) {
+            size_t end = res.find('|', start);
+            if (end == std::string::npos) {
+                parts.push_back(res.substr(start));
+                break;
+            }
+            parts.push_back(res.substr(start, end - start));
+            start = end + 1;
+        }
+        if (parts.size() >= 4) {
+            out->sid = (uint32_t)strtoul(parts[0].c_str(), nullptr, 10);
+            out->name = parts[1];
+            while (!out->name.empty() && out->name.front() == ' ') out->name.erase(0, 1);
+            while (!out->name.empty() && (out->name.back() == ' ' || out->name.back() == '\r' || out->name.back() == '\n')) out->name.pop_back();
+            out->vpid = (uint32_t)strtoul(parts[2].c_str(), nullptr, 10);
+            if (out->vpid == 0) out->vpid = 0x1FFF;
+            out->pmt = (uint32_t)strtoul(parts[3].c_str(), nullptr, 10);
+            if (parts.size() >= 7) {
+                out->freq = atoi(parts[4].c_str());
+                out->polar = atoi(parts[5].c_str());
+                out->sr = atoi(parts[6].c_str());
+            }
+            if (parts.size() >= 8) {
+                out->sat = parts[7];
+                while (!out->sat.empty() && (out->sat.back() == '\r' || out->sat.back() == '\n' || out->sat.back() == ' ')) out->sat.pop_back();
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+static std::string findExistingBissKey(uint32_t sid) {
+    static const char* const paths[] = {
+        "/data/plugin/ncamemu/SoftCam.Key",
+        "/data/plugin/oscam/SoftCam.Key",
+        "/data/plugin/keys/SoftCam.Key"
+    };
+    char sidHex[16];
+    snprintf(sidHex, sizeof(sidHex), "%04X", sid & 0xFFFF);
+    for (const char* p : paths) {
+        FILE* fp = fopen(p, "r");
+        if (!fp) continue;
+        char line[256];
+        while (fgets(line, sizeof(line), fp)) {
+            if (line[0] != 'F' && line[0] != 'f') continue;
+            char* s = line + 1;
+            while (*s == ' ' || *s == '\t') s++;
+            if (strncasecmp(s, sidHex, 4) == 0) {
+                char ftag[32], idx[16], keyStr[64];
+                if (sscanf(line, "%*s %31s %15s %63s", ftag, idx, keyStr) >= 2) {
+                    std::string clean;
+                    for (char c : std::string(keyStr)) {
+                        if (isxdigit((unsigned char)c)) clean += (char)toupper((unsigned char)c);
+                        if (clean.size() == 16) break;
+                    }
+                    if (clean.size() == 16) {
+                        fclose(fp);
+                        return clean;
+                    }
+                }
+            }
+        }
+        fclose(fp);
+    }
+    return "1100000000000000";
+}
+
+static bool saveBissKey(const BissChannelInfo& ch, const std::string& key16) {
+    static const char* const paths[] = {
+        "/data/plugin/ncamemu/SoftCam.Key",
+        "/data/plugin/oscam/SoftCam.Key",
+        "/data/plugin/keys/SoftCam.Key"
+    };
+    char sidHex[16], vpidHex[16];
+    snprintf(sidHex, sizeof(sidHex), "%04X", ch.sid & 0xFFFF);
+    snprintf(vpidHex, sizeof(vpidHex), "%04X", (ch.vpid > 0 && ch.vpid != 0x1FFF) ? (ch.vpid & 0xFFFF) : 0x1FFF);
+    
+    std::string newEntries;
+    char buf[256];
+    snprintf(buf, sizeof(buf), "F %s%s 00 %s ;%s (%s)\n", sidHex, vpidHex, key16.c_str(), ch.name.c_str(), ch.sat.c_str());
+    newEntries += buf;
+    snprintf(buf, sizeof(buf), "F %s%s 01 %s ;%s (%s)\n", sidHex, vpidHex, key16.c_str(), ch.name.c_str(), ch.sat.c_str());
+    newEntries += buf;
+    if (strcmp(vpidHex, "1FFF") != 0) {
+        snprintf(buf, sizeof(buf), "F %s1FFF 00 %s ;%s (%s)\n", sidHex, key16.c_str(), ch.name.c_str(), ch.sat.c_str());
+        newEntries += buf;
+        snprintf(buf, sizeof(buf), "F %s1FFF 01 %s ;%s (%s)\n", sidHex, key16.c_str(), ch.name.c_str(), ch.sat.c_str());
+        newEntries += buf;
+    }
+
+    bool anySaved = false;
+    for (const char* p : paths) {
+        if (access(p, F_OK) != 0) continue;
+        std::string existing = readFileAll(p, 1024 * 1024);
+        std::string updated;
+        if (!existing.empty()) {
+            size_t pos = 0;
+            while (pos < existing.size()) {
+                size_t end = existing.find('\n', pos);
+                std::string line = existing.substr(pos, (end == std::string::npos) ? std::string::npos : end - pos + 1);
+                bool skip = false;
+                if (line.size() > 6 && (line[0] == 'F' || line[0] == 'f')) {
+                    const char* s = line.c_str() + 1;
+                    while (*s == ' ' || *s == '\t') s++;
+                    if (strncasecmp(s, sidHex, 4) == 0) {
+                        skip = true;
+                    }
+                }
+                if (!skip) updated += line;
+                if (end == std::string::npos) break;
+                pos = end + 1;
+            }
+        }
+        updated = newEntries + updated;
+        if (writeFile(p, updated, true)) {
+            anySaved = true;
+        }
+    }
+    
+    // Also constant.cw if exists
+    const char* cwPath = "/data/plugin/ncamemu/constant.cw";
+    if (access(cwPath, F_OK) == 0) {
+        std::string spaced;
+        for (size_t i = 0; i < 16; i += 2) {
+            spaced += key16.substr(i, 2);
+            spaced += " ";
+        }
+        char cwLine[256];
+        snprintf(cwLine, sizeof(cwLine), "\n# %s (%s)\n2600:000000:%s:0000:1FFF::%s%s\n",
+                 ch.name.c_str(), ch.sat.c_str(), sidHex, spaced.c_str(), spaced.c_str());
+        FILE* fp = fopen(cwPath, "a");
+        if (fp) {
+            fputs(cwLine, fp);
+            fclose(fp);
+            anySaved = true;
+        }
+    }
+
+    system("pkill -HUP -f ncam_emu 2>/dev/null; pkill -HUP -f oscam 2>/dev/null");
+    return anySaved;
+}
+
+static void showBissScreen() {
+    std::string body;
+    body.reserve(2560);
+    
+    // Header
+    body += "<big><b><font color='#00E5FF'>[ BISS KEY &bull; \xD8\xA5\xD8\xAF\xD8\xAE\xD8\xA7\xD9\x84\x20\xD8\xB4\xD9\x81\xD8\xB1\xD8\xA9\x20\xD8\xA8\xD9\x8A\xD8\xAF ]</font></b></big><br/><br/>\n";
+    
+    // Channel Info
+    char sidBuf[64];
+    snprintf(sidBuf, sizeof(sidBuf), "%04X (%u)", g_biss.ch.sid & 0xFFFF, g_biss.ch.sid);
+    char vpidBuf[32];
+    snprintf(vpidBuf, sizeof(vpidBuf), "%04X (%u)", g_biss.ch.vpid & 0xFFFF, g_biss.ch.vpid);
+    
+    body += "<font color='#CFD8DC'><b>\xD8\xA7\xD9\x84\xD9\x82\xD9\x86\xD8\xA7\xD8\xA9:</b></font>&nbsp;&nbsp;<font color='#FFFFFF'><b>" + g_biss.ch.name + "</b></font><br/>\n";
+    if (!g_biss.ch.sat.empty() || g_biss.ch.freq > 0) {
+        char tpBuf[128];
+        const char* pol = (g_biss.ch.polar == 0) ? "V" : "H";
+        snprintf(tpBuf, sizeof(tpBuf), "%s &bull; %d %s %d", g_biss.ch.sat.c_str(), g_biss.ch.freq, pol, g_biss.ch.sr);
+        body += "<font color='#80DEEA'><small>" + std::string(tpBuf) + "</small></font><br/>\n";
+    }
+    body += "<font color='#90A4AE'><small>SID: <b>" + std::string(sidBuf) + "</b> &bull; VPID: <b>" + std::string(vpidBuf) + "</b></small></font><br/><br/>\n";
+    
+    // 16-Digit Key Box with Glowing Active Cursor
+    body += "<font color='#FFD700'><b>KEY:</b></font>&nbsp;&nbsp;";
+    body += "<big>";
+    for (int i = 0; i < 16; i++) {
+        char c = g_biss.key[i];
+        if (i == g_biss.cursor) {
+            body += "<font color='#00FFCC'><b><u>[" + std::string(1, c) + "]</u></b></font>";
+        } else {
+            body += "<font color='#FFFFFF'><b>" + std::string(1, c) + "</b></font>";
+        }
+        if (i % 2 == 1 && i != 15) {
+            if (i == 7) body += "&nbsp;&nbsp;<font color='#00E5FF'>&bull;</font>&nbsp;&nbsp;";
+            else body += "&nbsp;";
+        }
+    }
+    body += "</big><br/><br/>\n";
+    
+    // Status message if saved
+    if (!g_biss.statusMsg.empty()) {
+        body += "<font color='#00E676'><b>" + g_biss.statusMsg + "</b></font><br/><br/>\n";
+    }
+    
+    // Legend / Control guide
+    body += "<font color='#B0BEC5'><small>";
+    body += "[0-9] \xD8\xA3\xD8\xB1\xD9\x82\xD8\xA7\xD9\x85 &nbsp;&bull;&nbsp; [&ltrif;&rtrif;] \xD8\xAA\xD9\x86\xD9\x82\xD9\x84 &nbsp;&bull;&nbsp; [&utrif;&dtrif;] (A-F)<br/>\n";
+    body += "\xD8\xA7\xD9\x84\xD8\xA3\xD9\x84\xD9\x88\xD8\xA7\xD9\x86: <font color='#FF5252'>[A]</font> <font color='#69F0AE'>[B]</font> <font color='#FFD700'>[C]</font> <font color='#40C4FF'>[D]</font> <font color='#E040FB'>[CH+:E]</font> <font color='#FF6E40'>[CH-:F]</font><br/>\n";
+    body += "<font color='#00E676'>[OK]</font> \xD8\xAD\xD9\x81\xD8\xB8\x20\xD9\x88\xD8\xAA\xD9\x81\xD8\xB9\xD9\x8A\xD9\x84 &nbsp;&bull;&nbsp; <font color='#FF5252'>[EXIT]</font> \xD8\xB1\xD8\xAC\xD9\x88\xD8\xB9";
+    body += "</small></font>\n";
+    
+    grabRemote();
+    writeFile(HUD_TXT, body, true);
+}
+
+static void openBissManager() {
+    g_biss.cursor = 0;
+    g_biss.statusMsg.clear();
+    getCurrentChannelInfo(&g_biss.ch);
+    std::string existing = findExistingBissKey(g_biss.ch.sid);
+    snprintf(g_biss.key, sizeof(g_biss.key), "%s", existing.c_str());
+    showBissScreen();
+}
+/* ========================================================== */
+
+#define SB_JAR_PRIMARY  "/data/plugin/ColorPro_data/ScoreBoard.jar"
+#define SB_JAR_FALLBACK "/data/plugin/ScoreBoard.jar"
+#define SB_CMD_PIPE     "/data/plugin/scoreboard_cmd"
+
+static pid_t findScoreBoardPid() {
+    DIR* d = opendir("/proc");
+    if (!d) return -1;
+    struct dirent* de;
+    pid_t found = -1;
+    while ((de = readdir(d)) != nullptr) {
+        if (!isdigit((unsigned char)de->d_name[0])) continue;
+        pid_t p = (pid_t)atoi(de->d_name);
+        if (p <= 1 || p == getpid()) continue;
+        char cmdPath[64];
+        snprintf(cmdPath, sizeof(cmdPath), "/proc/%s/cmdline", de->d_name);
+        std::string cl = readFile(cmdPath, 512);
+        if (cl.find("lab.scoreboard.ScoreBoardHud") != std::string::npos) {
+            found = p;
+            break;
+        }
+    }
+    closedir(d);
+    return found;
+}
+
+static bool isScoreBoardRunning() {
+    return (findScoreBoardPid() > 0);
+}
+
+static bool sendScoreBoardCommand(const char* cmd) {
+    int s = socket(AF_INET, SOCK_STREAM, 0);
+    if (s < 0) return false;
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(8999);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 300000; /* 300ms timeout */
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, (const char*)&tv, sizeof(tv));
+
+    if (connect(s, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+        write(s, cmd, strlen(cmd));
+        write(s, "\n", 1);
+        close(s);
+        return true;
+    }
+    close(s);
+    return false;
+}
+
+static void toggleScoreBoardOverlay() {
+    /* 1. If ScoreBoard is already running, toggle it instantly via TCP socket 8999 */
+    if (sendScoreBoardCommand("toggle")) {
+        dbg("[sb] toggled scoreboard overlay via TCP 127.0.0.1:8999");
+        return;
+    }
+
+    /* 2. Check if process is running in /proc */
+    pid_t existing = findScoreBoardPid();
+    if (existing <= 0) {
+        const char* actualJar = SB_JAR_PRIMARY;
+        if (access(SB_JAR_PRIMARY, F_OK) != 0 && access(SB_JAR_FALLBACK, F_OK) == 0) {
+            actualJar = SB_JAR_FALLBACK;
+        }
+        unlink(SB_CMD_PIPE); /* clear any stale command file so it opens VISIBLE */
+        char cmd[256];
+        snprintf(cmd, sizeof(cmd), "export CLASSPATH=%s; /system/bin/app_process /system/bin lab.scoreboard.ScoreBoardHud &", actualJar);
+        system(cmd);
+        dbg("[sb] launched scoreboard overlay using %s", actualJar);
+    } else {
+        /* Process is alive but socket refused/timed out: fallback to pipe file */
+        int fd = open(SB_CMD_PIPE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        if (fd >= 0) {
+            write(fd, "toggle\n", 7);
+            close(fd);
+        }
+        dbg("[sb] toggled scoreboard overlay pid=%d via fallback pipe", (int)existing);
+    }
+}
+
+#define SB_CFG_PATH     "/data/plugin/ColorPro_data/scoreboard_cfg.json"
+#define SB_CFG_FALLBACK "/data/plugin/scoreboard_cfg.json"
+
+struct ScoreBoardConfig {
+    bool enabled = true;
+    bool ucl = true;
+    bool epl = true;
+    bool laliga = true;
+    bool seriea = true;
+    bool arab = true;
+    bool live_only = false;
+    bool show_details = true;
+};
+
+static ScoreBoardConfig g_sbCfg;
+
+static bool loadScoreBoardConfig(ScoreBoardConfig* cfg) {
+    if (!cfg) return false;
+    const char* path = SB_CFG_PATH;
+    if (access(SB_CFG_PATH, F_OK) != 0 && access(SB_CFG_FALLBACK, F_OK) == 0) {
+        path = SB_CFG_FALLBACK;
+    }
+    std::string s = readFileAll(path, 4096);
+    if (s.empty()) return false;
+    cfg->enabled = (s.find("\"enabled\": false") == std::string::npos);
+    cfg->ucl = (s.find("\"ucl\": false") == std::string::npos);
+    cfg->epl = (s.find("\"epl\": false") == std::string::npos);
+    cfg->laliga = (s.find("\"laliga\": false") == std::string::npos);
+    cfg->seriea = (s.find("\"seriea\": false") == std::string::npos);
+    cfg->arab = (s.find("\"arab\": false") == std::string::npos);
+    cfg->live_only = (s.find("\"live_only\": true") != std::string::npos);
+    cfg->show_details = (s.find("\"show_details\": false") == std::string::npos);
+    return true;
+}
+
+static bool saveScoreBoardConfig(const ScoreBoardConfig& cfg) {
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "{\n"
+        "  \"enabled\": %s,\n"
+        "  \"ucl\": %s,\n"
+        "  \"epl\": %s,\n"
+        "  \"laliga\": %s,\n"
+        "  \"seriea\": %s,\n"
+        "  \"arab\": %s,\n"
+        "  \"live_only\": %s,\n"
+        "  \"show_details\": %s\n"
+        "}\n",
+        cfg.enabled ? "true" : "false",
+        cfg.ucl ? "true" : "false",
+        cfg.epl ? "true" : "false",
+        cfg.laliga ? "true" : "false",
+        cfg.seriea ? "true" : "false",
+        cfg.arab ? "true" : "false",
+        cfg.live_only ? "true" : "false",
+        cfg.show_details ? "true" : "false"
+    );
+    writeFile(SB_CFG_PATH, buf, true);
+    writeFile(SB_CFG_FALLBACK, buf, true);
+    return true;
+}
+
+static void showScoreBoardSettings() {
+    std::string body;
+    body.reserve(3072);
+    body += "<big><b>" + hcol(H_TITLE, "\xD8\xA5\xD8\xB9\xD8\xAF\xD8\xA7\xD8\xAF\xD8\xA7\xD8\xAA\x20\xD8\xB4\xD8\xB1\xD9\x8A\xD8\xB7\x20\xD8\xA7\xD9\x84\xD9\x85\xD8\xA8\xD8\xA7\xD8\xB1\xD9\x8A\xD8\xA7\xD8\xAA") + "</b></big><br/>\n"; /* إعدادات شريط المباريات */
+    body += hcol(H_SUB, "\xD8\xA7\xD8\xAE\xD8\xAA\xD8\xB1\x20\xD8\xA7\xD9\x84\xD8\xAF\xD9\x88\xD8\xB1\xD9\x8A\xD8\xA7\xD8\xAA\x20\xD9\x88\xD8\xA7\xD9\x84\xD8\xAA\xD9\x81\xD8\xA7\xD8\xB5\xD9\x8A\xD9\x84\x20\xD8\xA7\xD9\x84\xD9\x85\xD8\xB9\xD8\xB1\xD9\x88\xD8\xB6\xD8\xA9\x3A") + "<br/>\n"; /* اختر الدوريات والتفاصيل المعروضة: */
+    
+    body += htmlItem(std::string("[1] \xD8\xAF\xD9\x88\xD8\xB1\xD9\x8A\x20\xD8\xA3\xD8\xA8\xD8\xB7\xD8\xA7\xD9\x84\x20\xD8\xA3\xD9\x88\xD8\xB1\xD9\x88\xD8\xA8\xD8\xA7\x3A\x20") + (g_sbCfg.ucl ? "[\xE2\x9C\x93 \xD9\x85\xD9\x81\xD8\xB9\xD9\x91\xD9\x84]" : "[\xE2\x9C\x97 \xD9\x85\xD8\xB9\xD8\xB7\xD9\x91\xD9\x84]"), g_sbCfg.ucl ? H_SW_CYAN : H_HINT) + "<br/>\n";
+    body += htmlItem(std::string("[2] \xD8\xA7\xD9\x84\xD8\xAF\xD9\x88\xD8\xB1\xD9\x8A\x20\xD8\xA7\xD9\x84\xD8\xA5\xD9\x86\xD8\xAC\xD9\x84\xD9\x8A\xD8\xB2\xD9\x8A\x3A\x20") + (g_sbCfg.epl ? "[\xE2\x9C\x93 \xD9\x85\xD9\x81\xD8\xB9\xD9\x91\xD9\x84]" : "[\xE2\x9C\x97 \xD9\x85\xD8\xB9\xD8\xB7\xD9\x91\xD9\x84]"), g_sbCfg.epl ? H_SW_CYAN : H_HINT) + "<br/>\n";
+    body += htmlItem(std::string("[3] \xD8\xA7\xD9\x84\xD8\xAF\xD9\x88\xD8\xB1\xD9\x8A\x20\xD8\xA7\xD9\x84\xD8\xA5\xD8\xB3\xD8\xA8\xD8\xA7\xD9\x86\xD9\x8A\x3A\x20") + (g_sbCfg.laliga ? "[\xE2\x9C\x93 \xD9\x85\xD9\x81\xD8\xB9\xD9\x91\xD9\x84]" : "[\xE2\x9C\x97 \xD9\x85\xD8\xB9\xD8\xB7\xD9\x91\xD9\x84]"), g_sbCfg.laliga ? H_SW_CYAN : H_HINT) + "<br/>\n";
+    body += htmlItem(std::string("[4] \xD8\xA7\xD9\x84\xD8\xAF\xD9\x88\xD8\xB1\xD9\x8A\x20\xD8\xA7\xD9\x84\xD8\xA5\xD9\x8A\xD8\xB7\xD8\xA7\xD9\x84\xD9\x8A\x3A\x20") + (g_sbCfg.seriea ? "[\xE2\x9C\x93 \xD9\x85\xD9\x81\xD8\xB9\xD9\x91\xD9\x84]" : "[\xE2\x9C\x97 \xD9\x85\xD8\xB9\xD8\xB7\xD9\x91\xD9\x84]"), g_sbCfg.seriea ? H_SW_CYAN : H_HINT) + "<br/>\n";
+    body += htmlItem(std::string("[5] \xD8\xA7\xD9\x84\xD8\xAF\xD9\x88\xD8\xB1\xD9\x8A\xD8\xA7\xD8\xAA\x20\xD8\xA7\xD9\x84\xD8\xB9\xD8\xB1\xD8\xA8\xD9\x8A\xD8\xA9\x3A\x20") + (g_sbCfg.arab ? "[\xE2\x9C\x93 \xD9\x85\xD9\x81\xD8\xB9\xD9\x91\xD9\x84]" : "[\xE2\x9C\x97 \xD9\x85\xD8\xB9\xD8\xB7\xD9\x91\xD9\x84]"), g_sbCfg.arab ? H_SW_CYAN : H_HINT) + "<br/>\n";
+    
+    body += hcol(H_DIV, M_DIV_LINE) + "<br/>\n";
+    
+    std::string modeStr = g_sbCfg.live_only ? "[\xD8\xA7\xD9\x84\xD9\x85\xD8\xA8\xD8\xA7\xD8\xB1\xD9\x8A\xD8\xA7\xD8\xAA\x20\xD8\xA7\xD9\x84\xD9\x85\xD8\xA8\xD8\xA7\xD8\xB4\xD8\xB1\xD8\xA9\x20\xD9\x81\xD9\x82\xD8\xB7]" : "[\xD9\x83\xD9\x84\x20\xD9\x85\xD8\xA8\xD8\xA7\xD8\xB1\xD9\x8A\xD8\xA7\xD8\xAA\x20\xD8\xA7\xD9\x84\xD9\x8A\xD9\x88\xD9\x85]";
+    body += htmlItem(std::string("[6] \xD9\x86\xD8\xB7\xD8\xA7\xD9\x82\x20\xD8\xA7\xD9\x84\xD8\xB9\xD8\xB1\xD8\xB6\x3A\x20") + modeStr, H_SW_GOLD) + "<br/>\n";
+    
+    std::string detStr = g_sbCfg.show_details ? "[\xE2\x9C\x93 \xD8\xA5\xD8\xB8\xD9\x87\xD8\xA7\xD8\xB1\x20\xD8\xA7\xD9\x84\xD8\xA3\xD9\x87\xD8\xAF\xD8\xA7\xD9\x81\x20\xD9\x88\xD8\xA7\xD9\x84\xD8\xA8\xD8\xB7\xD8\xA7\xD9\x82\xD8\xA7\xD8\xAA\x20\xD9\x88\xD8\xA7\xD9\x84\xD8\xB7\xD8\xB1\xD8\xAF]" : "[\xE2\x9C\x97 \xD8\xA5\xD8\xAE\xD9\x81\xD8\xA7\xD8\xA1\x20\xD8\xA7\xD9\x84\xD8\xAA\xD9\x81\xD8\xA7\xD8\xB5\xD9\x8A\xD9\x84]";
+    body += htmlItem(std::string("[7] \xD8\xA7\xD9\x84\xD8\xA5\xD8\xAD\xD8\xB5\xD8\xA7\xD8\xA6\xD9\x8A\xD8\xA7\xD8\xAA\x3A\x20") + detStr, g_sbCfg.show_details ? H_SW_GREEN : H_HINT) + "<br/>\n";
+    
+    body += hcol(H_DIV, M_DIV_LINE) + "<br/>\n";
+    
+    bool running = isScoreBoardRunning();
+    std::string stateStr = (running && g_sbCfg.enabled) ? "[\xE2\x97\x8F \xD8\xA7\xD9\x84\xD8\xB4\xD8\xB1\xD9\x8A\xD8\xB7\x20\xD8\xB4\xD8\xBA\xD8\xA7\xD9\x84]" : "[\xE2\x97\x8B \xD8\xA7\xD9\x84\xD8\xB4\xD8\xB1\xD9\x8A\xD8\xB7\x20\xD9\x85\xD8\xAA\xD9\x88\xD9\x82\xD9\x81]";
+    body += htmlItem(std::string("[0] \xD8\xAA\xD8\xB4\xD8\xBA\xD9\x8A\xD9\x84\x20\x2F\x20\xD8\xA5\xD9\x8A\xD9\x82\xD8\xA7\xD9\x81\x3A\x20") + stateStr, (running && g_sbCfg.enabled) ? H_SW_GREEN : H_SW_RED) + "<br/>\n";
+    
+    body += hcol(H_DIV, M_DIV_LINE) + "<br/>\n";
+    body += hcol(H_HINT, "[OK] \xD8\xAD\xD9\x81\xD8\xB8\x20\xD9\x88\xD8\xAA\xD8\xB7\xD8\xA8\xD9\x8A\xD9\x82\x20\xD9\x81\xD9\x88\xD8\xB1\xD9\x8A\x20\x20\x7C\x20\x20[EXIT] \xD8\xB1\xD8\xAC\xD9\x88\xD8\xB9") + "<br/>\n";
+
+    bool grabbed = grabRemote();
+    writeFile(HUD_TXT, body, true);
+    dbg("[tm] ScoreBoard settings HUD written (grabbed=%d)", grabbed ? 1 : 0);
+}
+
 static void showMenu() {
     std::string cur = readCurrent();
     std::string body;
@@ -1472,6 +1916,8 @@ static void showMenu() {
     body += htmlItem(M_CH_ENTRY, H_SW_NORMAL); body += "<br/>\n";
     body += htmlItem(M_UPDATE_ENTRY, H_SW_NORMAL); body += "<br/>\n";
     body += htmlItem(M_SNR_ENTRY, H_SW_CYAN); body += "<br/>\n";
+    body += htmlItem(M_BISS_ENTRY, "#FFD700"); body += "<br/>\n";
+    body += htmlItem(M_SCORE_ENTRY, "#00E5FF"); body += "<br/>\n";
     /* Dynamic badge if an update is available (purely local file read, NO network call) */
     UpdateStateInfo usi;
     if (readUpdateState(&usi) && usi.status == "UPDATE_AVAILABLE" && compareVersions(usi.latestVersion, CC_VERSION_STRING) > 0) {
@@ -6457,6 +6903,8 @@ int main(int argc, char* argv[]) {
         /* the daemon cannot take its overlay JVM with it, and a menu that was
          * on screen would otherwise stay on screen forever */
         killStaleWatchers();
+        pid_t sbp = findScoreBoardPid();
+        if (sbp > 0) { kill(sbp, SIGTERM); dbg("[stop] stopped ScoreBoard pid=%d", (int)sbp); }
         return 0;
     }
 
@@ -6586,6 +7034,13 @@ int main(int argc, char* argv[]) {
     /* Auto-healing: ensure dalvik-cache reflects the last chosen color */
     healColorFromChoice();
 
+    /* Auto-launch ScoreBoard overlay on daemon startup if user kept it enabled */
+    loadScoreBoardConfig(&g_sbCfg);
+    if (g_sbCfg.enabled && !isScoreBoardRunning()) {
+        toggleScoreBoardOverlay();
+        dbg("[start] auto-launched ScoreBoard overlay on daemon boot");
+    }
+
     /* Every start produces report.txt (counts, integrity, service.db state,
      * process pictures) so it can be fetched over FTP without a shell.
      * It is written by a child: re-deriving the counts takes a few seconds
@@ -6688,7 +7143,7 @@ int main(int argc, char* argv[]) {
         }
 
         int timeoutSec = MENU_TIMEOUT_SEC;
-        if (menuState == 8) timeoutSec = 300; // 5 minutes for dish alignment
+        if (menuState == 8 || menuState == 9 || menuState == 10) timeoutSec = 300; // 5 minutes for dish alignment / BISS / ScoreBoard
         else if (menuState == 2) timeoutSec = CHANNELS_TIMEOUT_SEC;
         else if (menuState == 3 || menuState == 4 || menuState == 5) timeoutSec = 30; // 30s timeout for sub-screens
 
@@ -6767,6 +7222,95 @@ int main(int argc, char* argv[]) {
         if (!isDown) continue;
 
         /* ---- channel-types sub-screen: 1..4 apply, EXIT goes back ---- */
+        /* ---- BISS key entry sub-screen (menuState == 9) ---- */
+        if (menuState == 9) {
+            openTime = time(nullptr);
+            if (isExitKey(code)) {
+                dbg("[ac] BISS manager -> back to main menu");
+                showMenu();
+                menuState = 1;
+            } else if (isOkKey(code)) {
+                dbg("[ac] BISS manager -> Save Key: %s", g_biss.key);
+                bool ok = saveBissKey(g_biss.ch, g_biss.key);
+                if (ok) {
+                    g_biss.statusMsg = "â ØªÙ Ø­ÙØ¸ ÙØªÙØ¹ÙÙ Ø§ÙØ´ÙØ±Ø© Ø¨ÙØ¬Ø§Ø­!";
+                } else {
+                    g_biss.statusMsg = "ØªÙ Ø­ÙØ¸ Ø§ÙØ´ÙØ±Ø© (SoftCam)";
+                }
+                showBissScreen();
+            } else if (code >= KEY_1 && code <= KEY_9) {
+                int digit = code - KEY_1 + 1;
+                g_biss.key[g_biss.cursor] = (char)('0' + digit);
+                if (g_biss.cursor < 15) g_biss.cursor++;
+                g_biss.statusMsg.clear();
+                showBissScreen();
+            } else if (code == 11 /* KEY_0 */) {
+                g_biss.key[g_biss.cursor] = '0';
+                if (g_biss.cursor < 15) g_biss.cursor++;
+                g_biss.statusMsg.clear();
+                showBissScreen();
+            } else if (code == 105 /* KEY_LEFT */) {
+                if (g_biss.cursor > 0) g_biss.cursor--;
+                g_biss.statusMsg.clear();
+                showBissScreen();
+            } else if (code == 106 /* KEY_RIGHT */) {
+                if (g_biss.cursor < 15) g_biss.cursor++;
+                g_biss.statusMsg.clear();
+                showBissScreen();
+            } else if (code == 103 /* KEY_UP */) {
+                char c = g_biss.key[g_biss.cursor];
+                if (c >= '0' && c <= '8') c++;
+                else if (c == '9') c = 'A';
+                else if (c >= 'A' && c <= 'E') c++;
+                else if (c == 'F') c = '0';
+                else c = '0';
+                g_biss.key[g_biss.cursor] = c;
+                g_biss.statusMsg.clear();
+                showBissScreen();
+            } else if (code == 108 /* KEY_DOWN */) {
+                char c = g_biss.key[g_biss.cursor];
+                if (c >= '1' && c <= '9') c--;
+                else if (c == '0') c = 'F';
+                else if (c >= 'B' && c <= 'F') c--;
+                else if (c == 'A') c = '9';
+                else c = '0';
+                g_biss.key[g_biss.cursor] = c;
+                g_biss.statusMsg.clear();
+                showBissScreen();
+            } else if (isRedKey(code)) {
+                g_biss.key[g_biss.cursor] = 'A';
+                if (g_biss.cursor < 15) g_biss.cursor++;
+                g_biss.statusMsg.clear();
+                showBissScreen();
+            } else if (code == 60 || code == 399) { // GREEN -> 'B'
+                g_biss.key[g_biss.cursor] = 'B';
+                if (g_biss.cursor < 15) g_biss.cursor++;
+                g_biss.statusMsg.clear();
+                showBissScreen();
+            } else if (code == 61 || code == 400) { // YELLOW -> 'C'
+                g_biss.key[g_biss.cursor] = 'C';
+                if (g_biss.cursor < 15) g_biss.cursor++;
+                g_biss.statusMsg.clear();
+                showBissScreen();
+            } else if (code == 62 || code == 401) { // BLUE -> 'D'
+                g_biss.key[g_biss.cursor] = 'D';
+                if (g_biss.cursor < 15) g_biss.cursor++;
+                g_biss.statusMsg.clear();
+                showBissScreen();
+            } else if (code == 104 || code == 402) { // CH+ -> 'E'
+                g_biss.key[g_biss.cursor] = 'E';
+                if (g_biss.cursor < 15) g_biss.cursor++;
+                g_biss.statusMsg.clear();
+                showBissScreen();
+            } else if (code == 109 || code == 403) { // CH- -> 'F'
+                g_biss.key[g_biss.cursor] = 'F';
+                if (g_biss.cursor < 15) g_biss.cursor++;
+                g_biss.statusMsg.clear();
+                showBissScreen();
+            }
+            continue;
+        }
+
         /* ---- SNR monitor sub-screen: EXIT/OK/8/RED hides, BACK goes to main menu ---- */
         if (menuState == 8) {
             if (isExitKey(code) || isOkKey(code) || code == KEY_8 || isRedKey(code)) {
@@ -6866,6 +7410,79 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
+        /* ---- ScoreBoard settings sub-screen (menuState == 10) ---- */
+        if (menuState == 10) {
+            openTime = time(nullptr);
+            bool cfgChanged = false;
+            if (code == KEY_1) {
+                g_sbCfg.ucl = !g_sbCfg.ucl;
+                cfgChanged = true;
+            } else if (code == KEY_2) {
+                g_sbCfg.epl = !g_sbCfg.epl;
+                cfgChanged = true;
+            } else if (code == KEY_3) {
+                g_sbCfg.laliga = !g_sbCfg.laliga;
+                cfgChanged = true;
+            } else if (code == KEY_4) {
+                g_sbCfg.seriea = !g_sbCfg.seriea;
+                cfgChanged = true;
+            } else if (code == KEY_5) {
+                g_sbCfg.arab = !g_sbCfg.arab;
+                cfgChanged = true;
+            } else if (code == KEY_6) {
+                g_sbCfg.live_only = !g_sbCfg.live_only;
+                cfgChanged = true;
+            } else if (code == KEY_7) {
+                g_sbCfg.show_details = !g_sbCfg.show_details;
+                cfgChanged = true;
+            } else if (code == 11 /* KEY_0 */) {
+                g_sbCfg.enabled = !g_sbCfg.enabled;
+                saveScoreBoardConfig(g_sbCfg);
+                if (g_sbCfg.enabled) {
+                    if (!isScoreBoardRunning()) toggleScoreBoardOverlay();
+                    else {
+                        sendScoreBoardCommand("show");
+                        sendScoreBoardCommand("reload_cfg");
+                    }
+                } else {
+                    sendScoreBoardCommand("hide");
+                }
+                showScoreBoardSettings();
+            } else if (isOkKey(code)) {
+                dbg("[ac] user confirmed scoreboard settings");
+                saveScoreBoardConfig(g_sbCfg);
+                if (g_sbCfg.enabled) {
+                    if (!isScoreBoardRunning()) toggleScoreBoardOverlay();
+                    else {
+                        sendScoreBoardCommand("reload_cfg");
+                        sendScoreBoardCommand("show");
+                    }
+                } else {
+                    sendScoreBoardCommand("hide");
+                }
+                writeFile(HUD_TXT, hcol(H_OK, "\xE2\x9C\x93 \xD8\xAA\xD9\x85\x20\xD8\xAD\xD9\x81\xD8\xB8\x20\xD8\xA5\xD8\xB9\xD8\xAF\xD8\xA7\xD8\xAF\xD8\xA7\xD8\xAA\x20\xD8\xB4\xD8\xB1\xD9\x8A\xD8\xB7\x20\xD8\xA7\xD9\x84\xD9\x85\xD8\xA8\xD8\xA7\xD8\xB1\xD9\x8A\xD8\xA7\xD8\xAA"), true);
+                usleep(700000);
+                hideMenu();
+                menuState = 0;
+            } else if (isExitKey(code)) {
+                dbg("[ac] scoreboard settings -> back to main menu");
+                saveScoreBoardConfig(g_sbCfg);
+                showMenu();
+                menuState = 1;
+                openTime = time(nullptr);
+            }
+
+            if (cfgChanged) {
+                dbg("[ac] scoreboard setting toggled, auto-saving and reloading live");
+                saveScoreBoardConfig(g_sbCfg);
+                if (g_sbCfg.enabled && isScoreBoardRunning()) {
+                    sendScoreBoardCommand("reload_cfg");
+                }
+                showScoreBoardSettings();
+            }
+            continue;
+        }
+
         /* ---- main colour screen ---- */
         if (code == KEY_1) {
             patchColorInPlace(0xd9, N_GOLD);
@@ -6879,9 +7496,15 @@ int main(int argc, char* argv[]) {
         } else if (code == KEY_4) {
             patchColorInPlace(0xcf, N_CYAN);
             menuState = 0;
-        } else if (code == KEY_5 || code == KEY_0) {
+        } else if (code == KEY_5) {
             patchColorInPlace(0x2f, N_DEFAULT);
             menuState = 0;
+        } else if (code == 11 /* KEY_0 */) {
+            dbg("[ac] open scoreboard settings (KEY_0)");
+            loadScoreBoardConfig(&g_sbCfg);
+            showScoreBoardSettings();
+            menuState = 10;
+            openTime = time(nullptr);
         } else if (code == KEY_6) {
             dbg("[ac] open sub-screen (code %u)", code);
             showChannels();
@@ -6909,6 +7532,11 @@ int main(int argc, char* argv[]) {
             menuState = 8;
             openTime = time(nullptr);
             g_beepLastMs = 0; /* fire beep immediately on open */
+        } else if (code == KEY_9) {
+            dbg("[ac] open BISS manager (KEY_9)");
+            openBissManager();
+            menuState = 9;
+            openTime = time(nullptr);
         } else if (isExitKey(code)) {
             dbg("[ac] hideMenu via exit key (code %u)", code);
             hideMenu();
@@ -6923,6 +7551,11 @@ int main(int argc, char* argv[]) {
         kill(g_overlayPid, SIGTERM);
         dbg("[overlay] watcher pid=%d stopped with the daemon", (int)g_overlayPid);
         g_overlayPid = -1;
+    }
+    pid_t sbp = findScoreBoardPid();
+    if (sbp > 0) {
+        kill(sbp, SIGTERM);
+        dbg("[sb] stopped ScoreBoard pid=%d on daemon exit", (int)sbp);
     }
     unlink(PID_FILE);
     if (g_dbgFile) { fclose(g_dbgFile); g_dbgFile = nullptr; }

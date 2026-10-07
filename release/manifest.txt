@@ -1,6 +1,6 @@
 version=10500
 min_version=10000
-released=2026-10-05
-notes=ColorPro v1.5 - Stealth Clean Persistence & OrcaGold Immune
-file=ColorPro|463772|98b21e505cf74a94f18e99d914f423ca26ad839d195320b7c2c60430a729f96611d7805fd06a0ec4bf78301658bc89afde24b439d8e00f49594c73e9c316cc20
+released=2026-10-07
+notes=ColorPro v1.5 - Live ScoreBoard Ticker & Hardware SNR dB Monitor
+file=ColorPro|489972|ccb1dcfbc4202594d0c7d98fc7a52d584286ea9154d5e614330f66e1b9115003134066e5893cbd709cf06cb9cf723522efff251d4f4dbf6111bf5056e433edab
 file=OverlayHud.jar|11003|6b7ee08642db9c6c97aece13c2c479399e9e39eb81b6c75f11368905a4e920a1b8a1a3e3b489d9436b8f758851de2709d6f51b4e1e74b34f36da1a47baf60cee

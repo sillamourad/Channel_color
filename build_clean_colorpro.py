@@ -34,9 +34,11 @@ ITEMS = [
     ("data/plugin/ColorPro.descr", descr_path, 0o644, "file"),
     ("data/plugin/ColorPro.png", os.path.join(ROOT, "ColorPro.png"), 0o644, "file"),
     ("data/plugin/ColorPro.version", version_path, 0o644, "file"),
+    ("data/plugin/ScoreBoard.jar", os.path.join(ROOT, "scoreboard_plugin", "ScoreBoard.jar"), 0o644, "file"),
 
     ("data/plugin/ColorPro_data", None, 0o755, "dir"),
     ("data/plugin/ColorPro_data/OverlayHud.jar", os.path.join(ROOT, "OverlayHud.jar"), 0o644, "file"),
+    ("data/plugin/ColorPro_data/ScoreBoard.jar", os.path.join(ROOT, "scoreboard_plugin", "ScoreBoard.jar"), 0o644, "file"),
     ("data/plugin/ColorPro_data/sqlite3", os.path.join(ROOT, "sqlite3"), 0o755, "file"),
     ("data/plugin/ColorPro_data/snr_inject", os.path.join(ROOT, "release", "snr_inject"), 0o755, "file"),
     ("data/plugin/ColorPro_data/libsnr_hook.so", os.path.join(ROOT, "release", "libsnr_hook.so"), 0o644, "file"),
