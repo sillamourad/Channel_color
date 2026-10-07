@@ -224,15 +224,15 @@ static const uint8_t s_obf_ORCA_KEYS_PLUGIN[] = { 0x24, 0x4a, 0xf4, 0xb6, 0x6c, 
 #define SQL_RUN_TIMEOUT_MS     60000
 #define SQL_MIN_KEYS           10
 #ifndef CC_VERSION_STRING
-#define CC_VERSION_STRING "1.4"
+#define CC_VERSION_STRING "1.5"
 #endif
-#define CC_BUILD_VERSION  "v1.4-ColorPro"
+#define CC_BUILD_VERSION  "v1.5-ColorPro"
 
 /* Semantic versioning: CC_VERSION_NUM = major * 10000 + minor * 100
- *   "1.0" -> 10000, "1.1" -> 10100, "1.2" -> 10200, "1.3" -> 10300, "2.0" -> 20000
+ *   "1.0" -> 10000, "1.1" -> 10100, "1.2" -> 10200, "1.3" -> 10300, "1.4" -> 10400, "1.5" -> 10500, "2.0" -> 20000
  * Keep CC_VERSION_STRING in sync with CC_VERSION_NUM. */
 #ifndef CC_VERSION_NUM
-#define CC_VERSION_NUM   10400
+#define CC_VERSION_NUM   10500
 #endif
 
 /* Display-only rendering of a version number.
