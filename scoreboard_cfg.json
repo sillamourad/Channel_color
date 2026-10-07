@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "ucl": true,
+  "epl": true,
+  "laliga": true,
+  "seriea": true,
+  "arab": true,
+  "live_only": false,
+  "show_details": true
+}

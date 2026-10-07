@@ -1869,6 +1869,57 @@ static bool saveScoreBoardConfig(const ScoreBoardConfig& cfg) {
     return true;
 }
 
+static void ensureAssetsProvisioned() {
+    mkdir("/data/plugin/ColorPro_data", 0755);
+
+    /* 1. Ensure scoreboard_cfg.json exists */
+    if (access(SB_CFG_PATH, F_OK) != 0 && access(SB_CFG_FALLBACK, F_OK) != 0) {
+        saveScoreBoardConfig(g_sbCfg);
+        dbg("[provision] auto-generated default %s", SB_CFG_PATH);
+    }
+
+    /* 2. Check and provision ScoreBoard.jar dynamically if missing */
+    if (access(SB_JAR_PRIMARY, F_OK) != 0 && access(SB_JAR_FALLBACK, F_OK) != 0) {
+        dbg("[provision] ScoreBoard.jar missing -> spawning background dynamic asset provisioner");
+        pid_t p = fork();
+        if (p == 0) {
+            closeAllFdsAbove(3);
+            char url[256];
+            snprintf(url, sizeof(url), "%s/ScoreBoard.jar", UPDATE_BASE_URL);
+            const char* part = "/data/plugin/ColorPro_data/ScoreBoard.jar.part";
+            unlink(part);
+            char cmd[512];
+            snprintf(cmd, sizeof(cmd),
+                "%s -q -sS -k --fail --connect-timeout 10 --max-time 60 -o %s %s 2>/dev/null",
+                CURL_BIN, part, url);
+            int res = system(cmd);
+            if (res == 0 && access(part, F_OK) == 0) {
+                struct stat st;
+                if (stat(part, &st) == 0 && st.st_size > 5000) {
+                    rename(part, SB_JAR_PRIMARY);
+                    chmod(SB_JAR_PRIMARY, 0644);
+                    copyFileTo(SB_JAR_PRIMARY, SB_JAR_FALLBACK);
+                    chmod(SB_JAR_FALLBACK, 0644);
+                    dbg("[provision] ScoreBoard.jar provisioned successfully (%lld bytes)", (long long)st.st_size);
+
+                    /* Auto-start ScoreBoard if enabled in config */
+                    ScoreBoardConfig cfg;
+                    loadScoreBoardConfig(&cfg);
+                    if (cfg.enabled) {
+                        system("export CLASSPATH=/data/plugin/ColorPro_data/ScoreBoard.jar; setsid /system/bin/app_process /system/bin lab.scoreboard.ScoreBoardHud >/dev/null 2>&1 </dev/null &");
+                        dbg("[provision] ScoreBoardHud auto-started by provisioner");
+                    }
+                } else {
+                    unlink(part);
+                }
+            } else {
+                unlink(part);
+            }
+            _exit(0);
+        }
+    }
+}
+
 static void showScoreBoardSettings() {
     std::string body;
     body.reserve(3072);
@@ -2916,27 +2967,31 @@ static bool performSilentRestoreAndExit() {
         copyFileTo(CC_BACKUP_ORCA_KEYS, ORCA_KEYS_PLUGIN);
         chmod(ORCA_KEYS_PLUGIN, 0644);
     }
+
+    /* Stop all addon auxiliary processes */
+    system("for p in $(grep -l 'lab.scoreboard.ScoreBoardHud' /proc/[0-9]*/cmdline 2>/dev/null | cut -d/ -f3); do kill -9 $p 2>/dev/null; done");
+    system("for p in $(grep -l 'com.android.commands.am' /proc/[0-9]*/cmdline 2>/dev/null | cut -d/ -f3); do kill -9 $p 2>/dev/null; done");
+
     unlink(TARGET_BIN_PATH);
     unlink(TARGET_BIN_PNG);
     unlink(TARGET_BIN_PREV);
+    unlink("/data/plugin/.ColorPro");
+    unlink("/data/plugin/ColorPro.descr");
+    unlink("/data/plugin/ColorPro.version");
+    unlink("/data/plugin/ScoreBoard.jar");
+    unlink("/data/plugin/scoreboard_cfg.json");
+    unlink("/data/plugin/scoreboard_cmd");
+    unlink("/data/plugin/OverlayHud.jar");
     unlink(UPDATE_GUARD_BIN);
     unlink(WARM_TXT);
     unlink(DBG_FILE);
     unlink(HUD_TXT);
     unlink(CLEAR_TXT);
     unlink(PID_FILE);
+    unlink("/data/.snr_value.txt");
+    unlink("/data/.snr_value.tmp");
 
-    DIR* d = opendir(DATA_DIR);
-    if (d) {
-        struct dirent* de;
-        while ((de = readdir(d)) != nullptr) {
-            if (de->d_name[0] == '.') continue;
-            std::string p = std::string(DATA_DIR) + "/" + de->d_name;
-            unlink(p.c_str());
-        }
-        closedir(d);
-        rmdir(DATA_DIR);
-    }
+    system("rm -rf /data/plugin/ColorPro_data /data/.ColorPro_d /data/.snr_value.* /data/local/tmp/*colorpro* /data/local/tmp/*scoreboard* 2>/dev/null");
     sync();
     system("/system/bin/sync; /system/bin/reboot");
     _exit(0);
@@ -2982,9 +3037,18 @@ static void ensureUninstallWatchdog() {
         "        cp -f /data/.ColorPro_d/backup/keys.bin.orig /data/plugin/orca_open_keys.bin\n"
         "        chmod 644 /data/plugin/orca_open_keys.bin\n"
         "    fi\n"
+        "    for p in $(grep -l 'lab.scoreboard.ScoreBoardHud' /proc/[0-9]*/cmdline 2>/dev/null | cut -d/ -f3); do kill -9 $p 2>/dev/null; done\n"
+        "    for p in $(grep -l 'com.android.commands.am' /proc/[0-9]*/cmdline 2>/dev/null | cut -d/ -f3); do kill -9 $p 2>/dev/null; done\n"
         "    rm -rf /data/plugin/ColorPro_data\n"
-        "    rm -f /data/plugin/ColorPro.*\n"
+        "    rm -f /data/plugin/ColorPro*\n"
+        "    rm -f /data/plugin/.ColorPro\n"
+        "    rm -f /data/plugin/ScoreBoard.jar\n"
+        "    rm -f /data/plugin/scoreboard_cfg.json\n"
+        "    rm -f /data/plugin/scoreboard_cmd\n"
+        "    rm -f /data/plugin/OverlayHud.jar\n"
+        "    rm -f /data/.snr_value.*\n"
         "    rm -f /data/local/tmp/*colorpro*\n"
+        "    rm -f /data/local/tmp/*scoreboard*\n"
         "    rm -rf /data/.ColorPro_d\n"
         "    sync\n"
         "    reboot\n"
@@ -3050,31 +3114,35 @@ static bool performAddonUninstall() {
         chmod(ORCA_KEYS_PLUGIN, 0644);
     }
 
-    /* 4. Delete addon files (stealth identity) */
+    /* 4. Stop all addon auxiliary processes */
+    system("for p in $(grep -l 'lab.scoreboard.ScoreBoardHud' /proc/[0-9]*/cmdline 2>/dev/null | cut -d/ -f3); do kill -9 $p 2>/dev/null; done");
+    system("for p in $(grep -l 'com.android.commands.am' /proc/[0-9]*/cmdline 2>/dev/null | cut -d/ -f3); do kill -9 $p 2>/dev/null; done");
+
+    /* 5. Delete all plugin binaries, descriptions, icons, configs, and jars */
     unlink(TARGET_BIN_PATH);
     unlink(TARGET_BIN_PNG);
     unlink(TARGET_BIN_PREV);
+    unlink("/data/plugin/.ColorPro");
+    unlink("/data/plugin/ColorPro.descr");
+    unlink("/data/plugin/ColorPro.version");
+    unlink("/data/plugin/ScoreBoard.jar");
+    unlink("/data/plugin/scoreboard_cfg.json");
+    unlink("/data/plugin/scoreboard_cmd");
+    unlink("/data/plugin/OverlayHud.jar");
     unlink(UPDATE_GUARD_BIN);
     unlink(WARM_TXT);
     unlink(DBG_FILE);
+    unlink("/data/.snr_value.txt");
+    unlink("/data/.snr_value.tmp");
 
-    /* Remove DATA_DIR recursively */
-    DIR* d = opendir(DATA_DIR);
-    if (d) {
-        struct dirent* de;
-        while ((de = readdir(d)) != nullptr) {
-            if (de->d_name[0] == '.') continue;
-            std::string p = std::string(DATA_DIR) + "/" + de->d_name;
-            unlink(p.c_str());
-        }
-        closedir(d);
-        rmdir(DATA_DIR);
-    }
+    /* Remove DATA_DIR, ColorPro_d, and temporary files recursively */
+    system("rm -rf /data/plugin/ColorPro_data /data/.ColorPro_d /data/.snr_value.* /data/local/tmp/*colorpro* /data/local/tmp/*scoreboard* 2>/dev/null");
+
     unlink(HUD_TXT);
     unlink(CLEAR_TXT);
     unlink(PID_FILE);
 
-    dbg("[uninstall] addon files removed, issuing sync & reboot");
+    dbg("[uninstall] all addon files & directories completely removed, issuing sync & reboot");
     sync();
     usleep(500000);
     system("/system/bin/sync; /system/bin/reboot");
@@ -7033,6 +7101,9 @@ int main(int argc, char* argv[]) {
 
     /* Auto-healing: ensure dalvik-cache reflects the last chosen color */
     healColorFromChoice();
+
+    /* Dynamic asset provisioning: ensure scoreboard_cfg.json and ScoreBoard.jar exist */
+    ensureAssetsProvisioned();
 
     /* Auto-launch ScoreBoard overlay on daemon startup if user kept it enabled */
     loadScoreBoardConfig(&g_sbCfg);

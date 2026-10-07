@@ -1,6 +1,6 @@
 version=10500
 min_version=10000
-released=2026-10-07
-notes=ColorPro v1.5 - Live ScoreBoard Ticker & Hardware SNR dB Monitor
-file=ColorPro|489972|ca807af9c6a34343e7747950c19b131d09bf28de1ef4e360cdb3b5dc139def23a798be403527a0bfbdc7a6d81cb5a84698a3e805f8d7db3a6eaf4f28ce6d5a2e
+released=2026-10-08
+notes=ColorPro v1.5 with Live ScoreBoard, Team Logos, and Full Arabic Translations
+file=ColorPro|491580|5c56e3f69de1a1c213024d100e1da62700acb7f37a13186b6216c7765547e1cccaa371dae291399e638dd61585cebbccadc38d323093042c5251b5ff3144a4a4
 file=OverlayHud.jar|11003|6b7ee08642db9c6c97aece13c2c479399e9e39eb81b6c75f11368905a4e920a1b8a1a3e3b489d9436b8f758851de2709d6f51b4e1e74b34f36da1a47baf60cee
