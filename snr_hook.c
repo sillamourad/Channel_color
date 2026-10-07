@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <stdint.h>
+#include <elf.h>
+#include <sys/system_properties.h>
 
 typedef unsigned int HI_U32;
 typedef int          HI_S32;
@@ -29,6 +31,17 @@ static time_t last_write = 0;
 static HI_U32 last_snr=0, last_quality=0, last_strength=0, last_ber=0, last_tuner=0;
 
 #define OUTPUT_FILE "/data/.snr_value.txt"
+#define LOG_FILE    "/data/local/tmp/snr_hook.log"
+
+static void log_msg(const char* fmt, ...) {
+    FILE* fp = fopen(LOG_FILE, "a");
+    if (!fp) return;
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(fp, fmt, ap);
+    va_end(ap);
+    fclose(fp);
+}
 
 static void write_value_locked(void) {
     const char* tmp = "/data/.snr_value.tmp";
@@ -51,7 +64,7 @@ static void write_value_locked(void) {
     rename(tmp, OUTPUT_FILE);
 }
 
-// Availink poller thread running inside f_server
+// Find base address of f_server
 static uintptr_t get_fsrv_base(void) {
     FILE *fp = fopen("/proc/self/maps", "r");
     if (!fp) return 0;
@@ -70,34 +83,127 @@ static uintptr_t get_fsrv_base(void) {
     return base;
 }
 
+// Universal ELF symbol resolver from /proc/self/exe
+static uintptr_t find_symbol_offset(const char* sym_name) {
+    int fd = open("/proc/self/exe", O_RDONLY);
+    if (fd < 0) return 0;
+
+    Elf32_Ehdr ehdr;
+    if (read(fd, &ehdr, sizeof(ehdr)) != sizeof(ehdr)) { close(fd); return 0; }
+    if (memcmp(ehdr.e_ident, ELFMAG, SELFMAG) != 0) { close(fd); return 0; }
+
+    Elf32_Shdr *shdrs = malloc(ehdr.e_shentsize * ehdr.e_shnum);
+    if (!shdrs) { close(fd); return 0; }
+    lseek(fd, ehdr.e_shoff, SEEK_SET);
+    if (read(fd, shdrs, ehdr.e_shentsize * ehdr.e_shnum) != (ssize_t)(ehdr.e_shentsize * ehdr.e_shnum)) {
+        free(shdrs); close(fd); return 0;
+    }
+
+    Elf32_Shdr *shstr_hdr = &shdrs[ehdr.e_shstrndx];
+    char *shstrtab = malloc(shstr_hdr->sh_size);
+    lseek(fd, shstr_hdr->sh_offset, SEEK_SET);
+    read(fd, shstrtab, shstr_hdr->sh_size);
+
+    Elf32_Shdr *symtab_hdr = NULL;
+    Elf32_Shdr *strtab_hdr = NULL;
+
+    for (int i = 0; i < ehdr.e_shnum; i++) {
+        const char *name = shstrtab + shdrs[i].sh_name;
+        if (strcmp(name, ".symtab") == 0) symtab_hdr = &shdrs[i];
+        if (strcmp(name, ".strtab") == 0) strtab_hdr = &shdrs[i];
+    }
+
+    uintptr_t result = 0;
+    if (symtab_hdr && strtab_hdr) {
+        char *strtab = malloc(strtab_hdr->sh_size);
+        lseek(fd, strtab_hdr->sh_offset, SEEK_SET);
+        read(fd, strtab, strtab_hdr->sh_size);
+
+        int num_syms = symtab_hdr->sh_size / sizeof(Elf32_Sym);
+        Elf32_Sym *syms = malloc(symtab_hdr->sh_size);
+        lseek(fd, symtab_hdr->sh_offset, SEEK_SET);
+        read(fd, syms, symtab_hdr->sh_size);
+
+        for (int i = 0; i < num_syms; i++) {
+            const char *name = strtab + syms[i].st_name;
+            if (strcmp(name, sym_name) == 0) {
+                result = (uintptr_t)syms[i].st_value;
+                break;
+            }
+        }
+        free(syms);
+        free(strtab);
+    }
+
+    free(shstrtab);
+    free(shdrs);
+    close(fd);
+    return result;
+}
+
 static void* avl_poller_thread(void* arg) {
     (void)arg;
+    log_msg("[avl] poller thread started in pid %d\n", getpid());
+
     uintptr_t base = get_fsrv_base();
-    if (!base) return NULL;
+    if (!base) {
+        log_msg("[avl] ERROR: could not find f_server base address\n");
+        return NULL;
+    }
+    log_msg("[avl] f_server base address: 0x%lx\n", base);
 
     typedef int (*fn_avl_snr_t)(short*, void*);
     typedef int (*fn_avl_str_t)(unsigned short*, void*);
     typedef int (*fn_avl_q_t)(unsigned short*, void*);
 
-    // Offsets confirmed from _device_fsrv.bin DWARF / symbol table:
-    // AVL62X1_GetSNR: 0x000a2b21
-    // AVL62X1_GetSignalStrength: 0x000a2cc1
-    // AVL62X1_GetSignalQuality: 0x000a2d49
-    // g_AVL62X1_Chip: 0x000d78ac
-    // _tChannelStatus: 0x00e3c5d8 (agc at +0x14, ber at +0x18)
+    // 1. Dynamic resolution via ELF symbol table
+    uintptr_t off_snr  = find_symbol_offset("AVL62X1_GetSNR");
+    uintptr_t off_str  = find_symbol_offset("AVL62X1_GetSignalStrength");
+    uintptr_t off_q    = find_symbol_offset("AVL62X1_GetSignalQuality");
+    uintptr_t off_chip = find_symbol_offset("g_AVL62X1_Chip");
+    uintptr_t off_chan = find_symbol_offset("_tChannelStatus");
 
-    fn_avl_snr_t avl_get_snr = (fn_avl_snr_t)(base + 0x000a2b21);
-    fn_avl_str_t avl_get_str = (fn_avl_str_t)(base + 0x000a2cc1);
-    fn_avl_q_t   avl_get_q   = (fn_avl_q_t)(base + 0x000a2d49);
-    void *pChip = (void*)(base + 0x000d78ac);
+    // 2. Fallback if symbol parsing unavailable
+    if (!off_snr || !off_chip) {
+        char model[64] = {0};
+        __system_property_get("ro.product.model", model);
+        log_msg("[avl] ELF lookup missed, checking model: '%s'\n", model);
+        if (strstr(model, "WEGOO") || strstr(model, "wegoo")) {
+            off_snr  = 0x000a2b21;
+            off_str  = 0x000a2cc1;
+            off_q    = 0x000a2d49;
+            off_chip = 0x000d78ac;
+            off_chan = 0x00e3c5d8;
+        } else {
+            // IRON / IRON PRO / PLUS
+            off_snr  = 0x000a9121;
+            off_str  = 0x000a92c1;
+            off_q    = 0x000a9349;
+            off_chip = 0x000e58f0;
+            off_chan = 0x00e4a6b8;
+        }
+    }
 
-    sleep(2);
+    log_msg("[avl] Resolved Offsets:\n"
+            "      AVL62X1_GetSNR:            0x%lx\n"
+            "      AVL62X1_GetSignalStrength: 0x%lx\n"
+            "      AVL62X1_GetSignalQuality:  0x%lx\n"
+            "      g_AVL62X1_Chip:            0x%lx\n"
+            "      _tChannelStatus:           0x%lx\n",
+            off_snr, off_str, off_q, off_chip, off_chan);
+
+    fn_avl_snr_t avl_get_snr = (fn_avl_snr_t)(base + off_snr);
+    fn_avl_str_t avl_get_str = (fn_avl_str_t)(base + off_str);
+    fn_avl_q_t   avl_get_q   = (fn_avl_q_t)(base + off_q);
+    void *pChip              = (void*)(base + off_chip);
+
+    sleep(1);
 
     while (1) {
         short raw_snr = 0;
         unsigned short raw_str = 0, raw_q = 0;
         
-        // Check if chip struct is initialized (slave addr 0x28)
+        // Read chip state
         uint16_t *chip_head = (uint16_t*)pChip;
         if (chip_head && *chip_head != 0) {
             int ret = avl_get_snr(&raw_snr, pChip);
@@ -105,19 +211,21 @@ static void* avl_poller_thread(void* arg) {
                 avl_get_str(&raw_str, pChip);
                 avl_get_q(&raw_q, pChip);
 
-                // Also check _tChannelStatus for comparison
-                uint32_t *tchan = (uint32_t*)(base + 0x00e3c5d8);
+                // Channel status fallback for strength/quality
                 uint32_t t_str = 0, t_q = 0;
-                if (tchan) {
-                    t_str = tchan[0x14 / 4];
-                    t_q = tchan[0x18 / 4];
+                if (off_chan) {
+                    uint32_t *tchan = (uint32_t*)(base + off_chan);
+                    if (tchan) {
+                        t_str = tchan[0x14 / 4];
+                        t_q   = tchan[0x18 / 4];
+                    }
                 }
 
                 pthread_mutex_lock(&mutex);
                 last_tuner = 0;
                 last_snr = (HI_U32)(raw_snr > 0 ? raw_snr : 0);
                 last_strength = (t_str > 0) ? t_str : (HI_U32)raw_str;
-                last_quality = (t_q > 0) ? t_q : (HI_U32)raw_q;
+                last_quality  = (t_q > 0) ? t_q : (HI_U32)raw_q;
                 time_t now = time(NULL);
                 if (now != last_write) {
                     last_write = now;
@@ -126,7 +234,7 @@ static void* avl_poller_thread(void* arg) {
                 pthread_mutex_unlock(&mutex);
             }
         }
-        sleep(1);
+        usleep(300000); // 300ms polling for responsive SNR bar
     }
     return NULL;
 }
@@ -142,7 +250,6 @@ static void init_hook(void) {
         real_get_ber      = (fn_get_ber_t)     dlsym(h, "HI_UNF_TUNER_GetBER");
     }
 
-    // If loaded into f_server, spawn the Availink poller thread
     char comm[64] = {0};
     int fd = open("/proc/self/comm", O_RDONLY);
     if (fd >= 0) {
