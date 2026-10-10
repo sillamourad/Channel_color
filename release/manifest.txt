@@ -1,6 +1,6 @@
-version=10502
+version=10503
 min_version=10000
 released=2026-10-10
-notes=ColorPro v1.5.2 - Live ScoreBoard Match Completion & Live-Only Filtering Fix
-file=ColorPro|491612|a8103609b1229a521935a4f782752445df1fc63c8bec57e7da2df33525c3b396ea5a76e5aa322026f601f43ed2aef7500757b8099d00bb51796e81d6230b1ac4
+notes=ColorPro v1.5.3 - Live ScoreBoard Match Completion & Live-Only Filtering Fix
+file=ColorPro|491612|246f71ad79cf50518ccb1fd417c1779a51208ef162e70dee4ba82809ea216956228d6d8d028951abd265d5342c143eb19bd68860eef1c3c9f198cb77771da67b
 file=OverlayHud.jar|11003|6b7ee08642db9c6c97aece13c2c479399e9e39eb81b6c75f11368905a4e920a1b8a1a3e3b489d9436b8f758851de2709d6f51b4e1e74b34f36da1a47baf60cee
