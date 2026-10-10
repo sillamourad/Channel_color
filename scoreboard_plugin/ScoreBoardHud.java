@@ -419,9 +419,9 @@ public class ScoreBoardHud {
 
                     // 2. Status / Minute
                     String sText = m.isLive ? ("\u25cf " + m.statusText) : m.statusText;
-                    int sCol = m.isLive ? Color.parseColor("#00E676") :
-                            (m.statusText.contains("FT") ? Color.parseColor("#80D8FF") :
-                            (m.statusText.contains("HT") ? Color.parseColor("#FFD700") : Color.parseColor("#B0BEC5")));
+                    int sCol = m.statusText.contains("HT") ? Color.parseColor("#FFD700") :
+                            (m.isLive ? Color.parseColor("#00E676") :
+                            (m.statusText.contains("FT") ? Color.parseColor("#80D8FF") : Color.parseColor("#B0BEC5")));
                     mPaintStatus.setColor(sCol);
                     float sTextW = mPaintStatus.measureText(sText);
                     float sBoxW = sTextW + 12;
@@ -1478,8 +1478,10 @@ public class ScoreBoardHud {
                     String sType = "";
                     String clock = "";
                     String shortDetail = "مجدولة";
+                    int period = 0;
                     if (status != null) {
                         clock = status.optString("displayClock", "");
+                        period = status.optInt("period", 0);
                         JSONObject typeObj = status.optJSONObject("type");
                         if (typeObj != null) {
                             sType = typeObj.optString("name", "");
@@ -1489,26 +1491,33 @@ public class ScoreBoardHud {
 
                     boolean isLive = false;
                     String statusText = "مجدولة";
-                    if (sType.contains("IN_PROGRESS") || sType.contains("FIRST_HALF")) {
-                        statusText = "الشوط 1 (" + (clock.isEmpty() ? "1'" : clock) + ")";
-                        isLive = true;
-                    } else if (sType.contains("HALFTIME")) {
+                    if (sType.contains("HALFTIME") || sType.contains("HALF_TIME")) {
                         statusText = "استراحة (HT)";
                         isLive = true;
-                    } else if (sType.contains("SECOND_HALF")) {
+                    } else if (sType.contains("SHOOTOUT") || sType.contains("PENALTIES") || period == 5) {
+                        statusText = "ركلات ترجيح";
+                        isLive = true;
+                    } else if (sType.contains("EXTRA_TIME") || sType.contains("OVERTIME") || period == 3 || period == 4) {
+                        String pLabel = (period == 4) ? "إضافي 2" : "إضافي 1";
+                        statusText = clock.isEmpty() ? pLabel : (pLabel + " (" + clock + ")");
+                        isLive = true;
+                    } else if (sType.contains("SECOND_HALF") || period == 2) {
                         statusText = "الشوط 2 (" + (clock.isEmpty() ? "45'" : clock) + ")";
                         isLive = true;
-                    } else if (sType.contains("EXTRA_TIME") || sType.contains("OVERTIME")) {
-                        statusText = "إضافي (" + clock + ")";
-                        isLive = true;
-                    } else if (sType.contains("SHOOTOUT") || sType.contains("PENALTIES")) {
-                        statusText = "ركلات ترجيح";
+                    } else if (sType.contains("FIRST_HALF") || period == 1 || sType.contains("IN_PROGRESS")) {
+                        statusText = "الشوط 1 (" + (clock.isEmpty() ? "1'" : clock) + ")";
                         isLive = true;
                     } else if (sType.contains("FINAL") || sType.contains("FULL_TIME")) {
                         statusText = "نهاية (FT)";
                         isLive = false;
                     } else if (sType.contains("POSTPONED")) {
                         statusText = "مؤجلة";
+                        isLive = false;
+                    } else if (sType.contains("ABANDONED")) {
+                        statusText = "ملغاة (ABN)";
+                        isLive = false;
+                    } else if (sType.contains("CANCELED") || sType.contains("CANCELLED")) {
+                        statusText = "ملغاة";
                         isLive = false;
                     } else {
                         if ("Scheduled".equalsIgnoreCase(shortDetail)) {
