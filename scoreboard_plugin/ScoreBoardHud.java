@@ -421,7 +421,7 @@ public class ScoreBoardHud {
                     String sText = m.isLive ? ("\u25cf " + m.statusText) : m.statusText;
                     int sCol = m.statusText.contains("HT") ? Color.parseColor("#FFD700") :
                             (m.isLive ? Color.parseColor("#00E676") :
-                            (m.statusText.contains("FT") ? Color.parseColor("#80D8FF") : Color.parseColor("#B0BEC5")));
+                            ((m.statusText.contains("FT") || m.statusText.contains("انتهت") || m.statusText.contains("نهاية")) ? Color.parseColor("#80D8FF") : Color.parseColor("#B0BEC5")));
                     mPaintStatus.setColor(sCol);
                     float sTextW = mPaintStatus.measureText(sText);
                     float sBoxW = sTextW + 12;
@@ -1479,6 +1479,8 @@ public class ScoreBoardHud {
                     String clock = "";
                     String shortDetail = "مجدولة";
                     int period = 0;
+                    boolean isCompleted = false;
+                    String state = "";
                     if (status != null) {
                         clock = status.optString("displayClock", "");
                         period = status.optInt("period", 0);
@@ -1486,12 +1488,32 @@ public class ScoreBoardHud {
                         if (typeObj != null) {
                             sType = typeObj.optString("name", "");
                             shortDetail = typeObj.optString("shortDetail", "مجدولة");
+                            isCompleted = typeObj.optBoolean("completed", false);
+                            state = typeObj.optString("state", "");
                         }
                     }
 
                     boolean isLive = false;
                     String statusText = "مجدولة";
-                    if (sType.contains("HALFTIME") || sType.contains("HALF_TIME")) {
+                    if (sType.contains("POSTPONED")) {
+                        statusText = "مؤجلة";
+                        isLive = false;
+                    } else if (sType.contains("ABANDONED")) {
+                        statusText = "ملغاة (ABN)";
+                        isLive = false;
+                    } else if (sType.contains("CANCELED") || sType.contains("CANCELLED")) {
+                        statusText = "ملغاة";
+                        isLive = false;
+                    } else if (isCompleted || "post".equalsIgnoreCase(state) || sType.contains("FINAL") || sType.contains("FULL_TIME")) {
+                        if (sType.contains("SHOOTOUT") || sType.contains("PENALTIES") || period == 5) {
+                            statusText = "انتهت (ركلات ترجيح)";
+                        } else if (sType.contains("EXTRA_TIME") || sType.contains("OVERTIME") || period == 3 || period == 4) {
+                            statusText = "انتهت (وقت إضافي)";
+                        } else {
+                            statusText = "انتهت";
+                        }
+                        isLive = false;
+                    } else if (sType.contains("HALFTIME") || sType.contains("HALF_TIME")) {
                         statusText = "استراحة (HT)";
                         isLive = true;
                     } else if (sType.contains("SHOOTOUT") || sType.contains("PENALTIES") || period == 5) {
@@ -1504,21 +1526,9 @@ public class ScoreBoardHud {
                     } else if (sType.contains("SECOND_HALF") || period == 2) {
                         statusText = "الشوط 2 (" + (clock.isEmpty() ? "45'" : clock) + ")";
                         isLive = true;
-                    } else if (sType.contains("FIRST_HALF") || period == 1 || sType.contains("IN_PROGRESS")) {
+                    } else if (sType.contains("FIRST_HALF") || period == 1 || sType.contains("IN_PROGRESS") || "in".equalsIgnoreCase(state)) {
                         statusText = "الشوط 1 (" + (clock.isEmpty() ? "1'" : clock) + ")";
                         isLive = true;
-                    } else if (sType.contains("FINAL") || sType.contains("FULL_TIME")) {
-                        statusText = "نهاية (FT)";
-                        isLive = false;
-                    } else if (sType.contains("POSTPONED")) {
-                        statusText = "مؤجلة";
-                        isLive = false;
-                    } else if (sType.contains("ABANDONED")) {
-                        statusText = "ملغاة (ABN)";
-                        isLive = false;
-                    } else if (sType.contains("CANCELED") || sType.contains("CANCELLED")) {
-                        statusText = "ملغاة";
-                        isLive = false;
                     } else {
                         if ("Scheduled".equalsIgnoreCase(shortDetail)) {
                             statusText = "مجدولة";
