@@ -25,36 +25,54 @@ SEMVER_FACTOR_MINOR = 100
 
 
 def parse_version_arg(value: str) -> int:
-    """argparse type: accept a human version '1.0' or a raw code (10000 / 7003)."""
+    """argparse type: accept a human version '1.0' or '1.5.2' or a raw code (10000 / 10502)."""
     s = str(value).strip()
     if "." in s:
         parts = s.split(".")
-        if len(parts) != 2:
+        if len(parts) == 3:
+            try:
+                major = int(parts[0])
+                minor = int(parts[1])
+                patch = int(parts[2])
+            except ValueError:
+                raise argparse.ArgumentTypeError(f"invalid version '{value}' (non numeric)")
+            if major < 0 or minor < 0 or minor > 99 or patch < 0 or patch > 99:
+                raise argparse.ArgumentTypeError(
+                    f"invalid version '{value}' (major >= 0, minor/patch 0..99)")
+            return major * SEMVER_FACTOR_MAJOR + minor * SEMVER_FACTOR_MINOR + patch
+        elif len(parts) == 2:
+            try:
+                major = int(parts[0])
+                minor = int(parts[1])
+            except ValueError:
+                raise argparse.ArgumentTypeError(f"invalid version '{value}' (non numeric)")
+            if major < 0 or minor < 0 or minor > 99:
+                raise argparse.ArgumentTypeError(
+                    f"invalid version '{value}' (major >= 0, minor 0..99)")
+            return major * SEMVER_FACTOR_MAJOR + minor * SEMVER_FACTOR_MINOR
+        else:
             raise argparse.ArgumentTypeError(
-                f"invalid version '{value}' (expected major.minor, e.g. 1.0)")
-        try:
-            major = int(parts[0])
-            minor = int(parts[1])
-        except ValueError:
-            raise argparse.ArgumentTypeError(f"invalid version '{value}' (non numeric)")
-        if major < 0 or minor < 0 or minor > 99:
-            raise argparse.ArgumentTypeError(
-                f"invalid version '{value}' (major >= 0, minor 0..99)")
-        return major * SEMVER_FACTOR_MAJOR + minor * SEMVER_FACTOR_MINOR
+                f"invalid version '{value}' (expected major.minor or major.minor.patch)")
     try:
         n = int(s)
     except ValueError:
         raise argparse.ArgumentTypeError(
-            f"invalid version '{value}' (expected '1.0' or a number like 10000)")
+            f"invalid version '{value}' (expected '1.0', '1.5.2' or a number like 10502)")
     if n < 1:
         raise argparse.ArgumentTypeError(f"invalid version '{value}' (must be >= 1)")
     return n
 
 
 def version_display(num: int) -> str:
-    """Best effort human form of a version number (raw code if not semver shaped)."""
-    if num >= SEMVER_FACTOR_MAJOR and num % SEMVER_FACTOR_MINOR == 0:
-        return f"{num // SEMVER_FACTOR_MAJOR}.{(num % SEMVER_FACTOR_MAJOR) // SEMVER_FACTOR_MINOR}"
+    """Best effort human form of a version number."""
+    if num >= SEMVER_FACTOR_MAJOR:
+        maj = num // SEMVER_FACTOR_MAJOR
+        rem = num % SEMVER_FACTOR_MAJOR
+        min_v = rem // SEMVER_FACTOR_MINOR
+        patch = rem % SEMVER_FACTOR_MINOR
+        if patch > 0:
+            return f"{maj}.{min_v}.{patch}"
+        return f"{maj}.{min_v}"
     return str(num)
 
 

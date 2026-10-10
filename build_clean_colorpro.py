@@ -13,7 +13,7 @@ descr_content = (
     "[NEW_API_V1]\n"
     "NAME=ColorPro\n"
     "TYPE=0\n"
-    "DESC=ColorPro v1.5 - Live Hardware SNR dB & Colors Manager (Press MENU or Long-Press RED)\n"
+    "DESC=ColorPro v1.5.2 - Live Hardware SNR dB & Colors Manager (Press MENU or Long-Press RED)\n"
     "APIVERSION=1.0\n"
     "AUTHOR=VIP\n"
 )
@@ -22,7 +22,7 @@ with open(descr_path, "wb") as f:
     f.write(descr_content.encode("utf-8"))
 
 # Prepare clean version
-version_content = "10000\n"
+version_content = "10502\n"
 version_path = os.path.join(ROOT, "_ColorPro_v15.version")
 with open(version_path, "wb") as f:
     f.write(version_content.encode("utf-8"))

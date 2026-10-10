@@ -1,6 +1,6 @@
-version=10510
+version=10502
 min_version=10000
 released=2026-10-10
-notes=ColorPro v1.5.1 - Live ScoreBoard LTR and Score Alignment Fix
-file=ColorPro|491580|5c56e3f69de1a1c213024d100e1da62700acb7f37a13186b6216c7765547e1cccaa371dae291399e638dd61585cebbccadc38d323093042c5251b5ff3144a4a4
+notes=ColorPro v1.5.2 - Live ScoreBoard LTR and Score Alignment Fix
+file=ColorPro|491612|a8103609b1229a521935a4f782752445df1fc63c8bec57e7da2df33525c3b396ea5a76e5aa322026f601f43ed2aef7500757b8099d00bb51796e81d6230b1ac4
 file=OverlayHud.jar|11003|6b7ee08642db9c6c97aece13c2c479399e9e39eb81b6c75f11368905a4e920a1b8a1a3e3b489d9436b8f758851de2709d6f51b4e1e74b34f36da1a47baf60cee
