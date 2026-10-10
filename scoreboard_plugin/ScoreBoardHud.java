@@ -188,6 +188,9 @@ public class ScoreBoardHud {
         public void run() {
             if (mView.mRunning && mIsVisible) {
                 mView.mScrollX += mView.mSpeed;
+                if (mView.mPeriod > 0 && mView.mScrollX >= mView.mPeriod) {
+                    mView.mScrollX %= mView.mPeriod;
+                }
                 mView.invalidate();
                 mView.postDelayed(this, 16);
             }
@@ -367,7 +370,7 @@ public class ScoreBoardHud {
                     w += mPaintText.measureText(m.team1) + 12;
 
                     // Score
-                    String scText = " " + m.score1 + " - " + m.score2 + " ";
+                    String scText = " " + m.score2 + " - " + m.score1 + " ";
                     w += mPaintScore.measureText(scText) + 12 + 12;
 
                     // Team 2 + Logo 2
@@ -449,7 +452,7 @@ public class ScoreBoardHud {
                     curX = t1Left - 12;
 
                     // 4. Score
-                    String scText = " " + m.score1 + " - " + m.score2 + " ";
+                    String scText = " " + m.score2 + " - " + m.score1 + " ";
                     float scTextW = mPaintScore.measureText(scText);
                     float scBoxW = scTextW + 12;
                     float scLeft = curX - scBoxW;
@@ -586,12 +589,12 @@ public class ScoreBoardHud {
             mPeriod = totalW + 200f;
 
             float offset = mScrollX % mPeriod;
-            float curHead = width - offset;
-
-            drawMatchTrain(canvas, curHead, width, height, baseline);
-
-            if (curHead < width) {
-                drawMatchTrain(canvas, curHead + mPeriod, width, height, baseline);
+            float curHead = offset;
+            while (curHead - totalW < width) {
+                if (curHead >= 0) {
+                    drawMatchTrain(canvas, curHead, width, height, baseline);
+                }
+                curHead += mPeriod;
             }
         }
     }
